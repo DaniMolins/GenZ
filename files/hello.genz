@@ -1,0 +1,5 @@
+shortyap This is the classic Hello World program in GenZ
+
+maincharacter () {
+    yap("Hello, World!");
+}

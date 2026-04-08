@@ -1,14 +1,14 @@
 package src;
 public class Token {
-    private TokenType type;
+    private String type;
     private String value;
 
-    public Token(TokenType type, String value) {
+    public Token(String type, String value) {
         this.type = type;
         this.value = value;
     }
 
-    public TokenType getType() {
+    public String getType() {
         return type;
     }
 
