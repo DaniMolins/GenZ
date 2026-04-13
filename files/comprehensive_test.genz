@@ -1,0 +1,99 @@
+shortyap Comprehensive test file demonstrating GenZ grammar features
+
+inject "stdlib.genz";
+
+outfit Person {
+    muchotexto name fr "Unknown";
+    number age fr 0;
+};
+
+picks Color {
+    RED, GREEN, BLUE
+};
+
+sidequest number add(number a, number b) {
+    micdrop a + b;
+}
+
+sidequest number factorial(number n) {
+    hearmeout (n lowkey 2) {
+        micdrop 1;
+    }
+    micdrop n * factorial(n - 1);
+}
+
+sidequest maybe isEven(number x) {
+    micdrop x % 2 == 0;
+}
+
+maincharacter () {
+    shortyap Variable declarations
+    number x fr 10;
+    real pi fr 3.14159;
+    muchotexto greeting fr "Hello, GenZ!";
+    maybe flag fr nocap;
+    letter initial fr 'A';
+
+    shortyap Constant declaration
+    solid number MAX fr 100;
+
+    shortyap Arithmetic operations
+    number result fr add(5, 3);
+    number modResult fr 17 % 5;
+
+    shortyap Control flow - if/else
+    hearmeout (x highkey 5) {
+        yap("x is greater than 5");
+    } perhaps (x == 5) {
+        yap("x equals 5");
+    } nvm {
+        yap("x is less than 5");
+    }
+
+    shortyap Switch statement
+    consider (x) {
+        checkmeout 1:
+            yap("one");
+            ragequit;
+        checkmeout 10:
+            yap("ten");
+            ragequit;
+        idc:
+            yap("other");
+            ragequit;
+    }
+
+    shortyap For loop with new comma syntax
+    far (number i fr 0, i lowkey 10, i++) {
+        yap(i);
+    }
+
+    shortyap While loop
+    number counter fr 0;
+    takeas (counter lowkey 5) {
+        counter fr counter + 1;
+    }
+
+    shortyap Do-while loop
+    post_once {
+        yap("Runs at least once");
+    } keep_it_going (cap);
+
+    shortyap Prefix and postfix increment
+    number val fr 5;
+    ++val;
+    val++;
+
+    shortyap Function calls
+    number fact5 fr factorial(5);
+    yap("5! = ", fact5);
+
+    shortyap Boolean operations
+    maybe check fr isEven(4) same nocap;
+
+    shortyap Input
+    muchotexto userInput fr "";
+    listenclosely(userInput);
+
+    yap("Program complete!");
+}
