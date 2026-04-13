@@ -93,27 +93,22 @@ public class Parser {
 
     // ── DECLARATIONS ────────────────────────────────────────
 
-    // <variable_declaration> ::= <type_specifier> ASSIGN ID ASSIGN <expression> SEMICOLON
-    //                          | <type_specifier> ASSIGN ID SEMICOLON
+    // <variable_declaration> ::= <type_specifier> ID ASSIGN <expression> SEMICOLON
     private TreeNode parseVariableDeclaration() {
         TreeNode node = new TreeNode("variable_declaration");
         node.addChild(parseTypeSpecifier());
-        node.addChild(new TreeNode(match(TokenType.ASSIGN)));
         node.addChild(new TreeNode(match(TokenType.ID)));
-        if (check(TokenType.ASSIGN)) {
-            node.addChild(new TreeNode(match(TokenType.ASSIGN)));
-            node.addChild(parseExpression());
-        }
+        node.addChild(new TreeNode(match(TokenType.ASSIGN)));
+        node.addChild(parseExpression());
         node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         return node;
     }
 
-    // <constant_declaration> ::= CONST <type_specifier> ASSIGN ID ASSIGN <expression> SEMICOLON
+    // <constant_declaration> ::= CONST <type_specifier> ID ASSIGN <expression> SEMICOLON
     private TreeNode parseConstantDeclaration() {
         TreeNode node = new TreeNode("constant_declaration");
         node.addChild(new TreeNode(match(TokenType.CONST)));
         node.addChild(parseTypeSpecifier());
-        node.addChild(new TreeNode(match(TokenType.ASSIGN)));
         node.addChild(new TreeNode(match(TokenType.ID)));
         node.addChild(new TreeNode(match(TokenType.ASSIGN)));
         node.addChild(parseExpression());
