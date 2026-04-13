@@ -56,37 +56,41 @@ public class Parser {
 
     // ── PROGRAM ─────────────────────────────────────────────
 
-    // <program> ::= <declaration_list>
+    // <program> ::= <declaration_list> <main_function>
     private TreeNode parseProgram() {
         TreeNode node = new TreeNode("program");
         node.addChild(parseDeclarationList());
+        node.addChild(parseMainFunction());
         match(TokenType.EOF);
         return node;
     }
 
-    // <declaration_list> ::= <declaration> | <declaration_list> <declaration>
+    // <declaration_list> ::= <declaration> <declaration_list'> | ε
+    // <declaration_list'> ::= <declaration> <declaration_list'> | ε
     private TreeNode parseDeclarationList() {
         TreeNode node = new TreeNode("declaration_list");
-        while (!check(TokenType.EOF)) {
+        while (!check(TokenType.MAINCHARACTER) && !check(TokenType.EOF)) {
             node.addChild(parseDeclaration());
         }
         return node;
     }
 
+    // <declaration> ::= <import_statement>
+    //                 | <struct_declaration>
+    //                 | <enum_declaration>
+    //                 | <function_declaration>
     private TreeNode parseDeclaration() {
         TreeNode node = new TreeNode("declaration");
         switch (currentToken.type) {
-            case SIDEQUEST:   node.addChild(parseFunctionDeclaration()); break;
-            case MAINCHARACTER: node.addChild(parseMainFunction());      break;
+            case INJECT:      node.addChild(parseImportStatement());     break;
             case OUTFIT:      node.addChild(parseStructDeclaration());   break;
             case PICKS:       node.addChild(parseEnumDeclaration());     break;
-            case INJECT:      node.addChild(parseImportStatement());     break;
-            case CONST:       node.addChild(parseConstantDeclaration()); break;
+            case SIDEQUEST:   node.addChild(parseFunctionDeclaration()); break;
             default:
-                if (isTypeSpecifier()) node.addChild(parseVariableDeclaration());
-                else throw new RuntimeException(
+                throw new RuntimeException(
                         "Syntax error at line " + currentToken.line +
-                                ": unexpected token " + currentToken.type);
+                                ": expected declaration (inject, outfit, picks, or sidequest) " +
+                                "but found " + currentToken.type);
         }
         return node;
     }
