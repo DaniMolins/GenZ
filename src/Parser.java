@@ -542,42 +542,43 @@ public class Parser {
         return node;
     }
 
+    // <postfix_expression> ::= <primary_expression> <postfix_expression'>
     private TreeNode parsePostfix() {
         TreeNode node = new TreeNode("postfix_expression");
-        // function call or array access
-        if (check(TokenType.ID)) {
-            Token id = advance();
-            if (check(TokenType.LPAREN)) {
-                // function call
-                TreeNode call = new TreeNode("function_call");
-                call.addChild(new TreeNode(id));
-                call.addChild(new TreeNode(match(TokenType.LPAREN)));
-                call.addChild(parseArgumentListOpt());
-                call.addChild(new TreeNode(match(TokenType.RPAREN)));
-                node.addChild(call);
-            } else if (check(TokenType.LBRACKET)) {
-                // array access
-                TreeNode arr = new TreeNode("array_access");
-                arr.addChild(new TreeNode(id));
-                arr.addChild(new TreeNode(match(TokenType.LBRACKET)));
-                arr.addChild(parseExpression());
-                arr.addChild(new TreeNode(match(TokenType.RBRACKET)));
-                node.addChild(arr);
-            } else if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
-                node.addChild(new TreeNode(id));
-                node.addChild(new TreeNode(advance())); // ++
-            } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
-                node.addChild(new TreeNode(id));
-                node.addChild(new TreeNode(advance())); // --
-            } else {
-                TreeNode primary = new TreeNode("primary_expression");
-                primary.addChild(new TreeNode(id));
-                node.addChild(primary);
-            }
-        } else {
-            node.addChild(parsePrimary());
-        }
+        node.addChild(parsePrimary());
+        parsePostfixPrime(node);
         return node;
+    }
+
+    // <postfix_expression'> ::= PLUS PLUS <postfix_expression'>
+    //                         | MINUS MINUS <postfix_expression'>
+    //                         | LBRACKET <expression> RBRACKET <postfix_expression'>
+    //                         | LPAREN <argument_list_opt> RPAREN <postfix_expression'>
+    //                         | DOT ID <postfix_expression'>
+    //                         | ε
+    private void parsePostfixPrime(TreeNode node) {
+        if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
+            node.addChild(new TreeNode(advance())); // ++
+            parsePostfixPrime(node);
+        } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
+            node.addChild(new TreeNode(advance())); // --
+            parsePostfixPrime(node);
+        } else if (check(TokenType.LBRACKET)) {
+            node.addChild(new TreeNode(match(TokenType.LBRACKET)));
+            node.addChild(parseExpression());
+            node.addChild(new TreeNode(match(TokenType.RBRACKET)));
+            parsePostfixPrime(node);
+        } else if (check(TokenType.LPAREN)) {
+            node.addChild(new TreeNode(match(TokenType.LPAREN)));
+            node.addChild(parseArgumentListOpt());
+            node.addChild(new TreeNode(match(TokenType.RPAREN)));
+            parsePostfixPrime(node);
+        } else if (check(TokenType.DOT)) {
+            node.addChild(new TreeNode(match(TokenType.DOT)));
+            node.addChild(new TreeNode(match(TokenType.ID)));
+            parsePostfixPrime(node);
+        }
+        // else: epsilon
     }
 
     private TreeNode parsePrimary() {
