@@ -1,0 +1,276 @@
+-------------
+GenZ Grammar
+-------------
+
+<program> ::= <declaration_list> <main_function>
+
+<declaration_list>  ::= <declaration> <declaration_list'>
+
+<declaration_list'> ::= <declaration> <declaration_list'> | ε
+
+<declaration> ::= <import_statement>
+                | <struct_declaration>
+                | <enum_declaration>
+                | <function_declaration>
+
+---------
+IMPORT
+---------
+
+<import_statement> ::= INJECT STRING_LITERAL SEMICOLON
+
+---------
+STRUCTS & ENUMS
+---------
+
+<struct_declaration> ::= OUTFIT ID LBRACE <struct_body> RBRACE SEMICOLON
+
+<struct_body> ::= <variable_declaration> <struct_body'>
+
+<struct_body'> ::= <variable_declaration> <struct_body'> | ε
+
+<enum_declaration> ::= PICKS ID LBRACE <enum_body> RBRACE SEMICOLON
+
+<enum_body>  ::= ID <enum_body'>
+
+<enum_body'> ::= COMMA ID <enum_body'> | ε
+
+---------
+FUNCTIONS
+---------
+
+<function_declaration> ::= SIDEQUEST <type_specifier> ID LPAREN <param_list_opt> RPAREN <block>
+
+<main_function> ::= MAINCHARACTER LPAREN RPAREN <block>
+
+<param_list_opt> ::= <param_list> | ε
+
+<param> ::= <type_specifier> ID
+
+<param_list>  ::= <param> <param_list'>
+
+<param_list'> ::= COMMA <param> <param_list'> | ε
+
+---------
+TYPES
+---------
+
+<type_specifier> ::= CONST <base_type>
+                   | CATALOG LANGLE <base_type> RANGLE
+                   | <base_type>
+
+<base_type> ::= NUMBER | REAL | MUCHOTEXTO | MAYBE | LETTER | SIXSEVEN
+
+---------
+BLOCK
+---------
+
+<block> ::= LBRACE <statement_list> RBRACE | LBRACE RBRACE
+
+---------
+STATEMENTS
+---------
+
+<statement_list>  ::= <statement> <statement_list'>
+
+<statement_list'> ::= <statement> <statement_list'> | ε
+
+<statement> ::= <if_statement>
+              | <switch_statement>
+              | <for_statement>
+              | <while_statement>
+              | <do_while_statement>
+              | <break_statement>
+              | <continue_statement>
+              | <return_statement>
+              | <print_statement>
+              | <input_statement>
+              | <block>
+              | <open_statement>
+
+<open_statement> ::= CONST <base_type> ID ASSIGN <expression> SEMICOLON
+                   | <type_specifier_no_const> <decl_or_expr_tail>
+                   | ID <id_led_tail>
+                   | <literal> SEMICOLON
+                   | LPAREN <expression> RPAREN SEMICOLON
+
+<type_specifier_no_const> ::= CATALOG LANGLE <base_type> RANGLE
+                            | <base_type>
+
+<decl_or_expr_tail> ::= ID ASSIGN <expression> SEMICOLON
+                      | SEMICOLON
+
+<id_led_tail> ::= ASSIGN <expression> SEMICOLON
+                | LPAREN <argument_list_opt> RPAREN SEMICOLON
+                | LBRACKET <expression> RBRACKET <id_led_tail'>
+                | PLUS PLUS SEMICOLON
+                | MINUS MINUS SEMICOLON
+                | DOT ID <id_led_tail>
+                | SEMICOLON
+
+<id_led_tail'> ::= ASSIGN <expression> SEMICOLON
+                 | SEMICOLON
+
+---------
+VARIABLE & CONSTANT DECLARATIONS
+---------
+
+<variable_declaration> ::= <type_specifier> ID ASSIGN <expression> SEMICOLON
+
+<constant_declaration> ::= CONST <type_specifier> ID ASSIGN <expression> SEMICOLON
+
+---------
+CONTROL FLOW — IF / ELSE
+---------
+
+<if_statement> ::= HEARMEOUT LPAREN <expression> RPAREN <block> <else_clause>
+
+<else_clause> ::= NVM <block>
+                | PERHAPS LPAREN <expression> RPAREN <block> <else_clause>
+                | ε
+
+---------
+CONTROL FLOW — SWITCH
+---------
+
+<switch_statement> ::= CONSIDER LPAREN <expression> RPAREN LBRACE <case_list> RBRACE
+
+<case_list>  ::= <case_clause> <case_list'>
+
+<case_list'> ::= <case_clause> <case_list'> | ε
+
+<case_clause> ::= CHECKMEOUT <literal> COLON <statement_list> RAGEQUIT SEMICOLON
+
+---------
+LOOPS
+---------
+
+<for_statement> ::= FAR LPAREN <for_init> COMMA <expression> COMMA <for_update> RPAREN <block>
+
+<for_init> ::= <type_specifier> ID ASSIGN <expression>
+             | ID ASSIGN <expression>
+             | ε
+
+<for_update> ::= ID ASSIGN <expression>
+               | <expression>
+               | ε
+
+<while_statement> ::=  TAKEAS LPAREN <expression> RPAREN <block>
+
+<do_while_statement> ::= POST_ONCE <block> KEEP_IT_GOING LPAREN <expression> RPAREN SEMICOLON
+
+<break_statement>    ::= RAGEQUIT SEMICOLON
+
+<continue_statement> ::= SAYLESS SEMICOLON
+
+---------
+RETURN / PRINT / INPUT
+---------
+
+<return_statement> ::= MICDROP <expression> SEMICOLON
+                     | MICDROP SEMICOLON
+
+<print_statement> ::= YAP LPAREN STRING_LITERAL COMMA <argument_list> RPAREN SEMICOLON
+                    | YAP LPAREN <expression> RPAREN SEMICOLON
+
+<input_statement> ::= LISTENCLOSELY LPAREN ID RPAREN SEMICOLON
+
+---------
+EXPRESSIONS (Precedence: lowest → highest)
+---------
+
+<expression> ::= <logical_or_expression>
+
+<logical_or_expression> ::= <logical_and_expression> <logical_or_expression'>
+
+<logical_or_expression'> ::= OR <logical_and_expression> <logical_or_expression'>
+                           | ε
+
+<logical_and_expression> ::= <equality_expression> <logical_and_expression'>
+
+<logical_and_expression'> ::= AND <equality_expression> <logical_and_expression'>
+                            | ε
+
+<equality_expression> ::= <relational_expression> <equality_expression'>
+
+<equality_expression'> ::= EQUALEQUAL <relational_expression> <equality_expression'>
+                         | NOTEQUAL  <relational_expression> <equality_expression'>
+                         | ε
+
+<relational_expression> ::=
+    <additive_expression> <relational_expression'>
+
+<relational_expression'> ::=
+      GREATER      <additive_expression> <relational_expression'>
+    | LESS         <additive_expression> <relational_expression'>
+    | GREATEREQUAL <additive_expression> <relational_expression'>
+    | LESSEQUAL    <additive_expression> <relational_expression'>
+    | ε
+
+<additive_expression> ::=  <multiplicative_expression> <additive_expression'>
+
+<additive_expression'> ::= PLUS  <multiplicative_expression> <additive_expression'>
+                         | MINUS <multiplicative_expression> <additive_expression'>
+                         | ε
+
+<multiplicative_expression> ::=  <unary_expression> <multiplicative_expression'>
+
+<multiplicative_expression'> ::= STAR  <unary_expression> <multiplicative_expression'>
+                               | SLASH <unary_expression> <multiplicative_expression'>
+                               | MOD   <unary_expression> <multiplicative_expression'>
+                               | ε
+
+---------
+UNARY
+---------
+
+<unary_expression> ::= NOT   <unary_expression>
+                     | MINUS <unary_expression>
+                     | PLUS  PLUS  ID
+                     | MINUS MINUS ID
+                     | AMPERSAND ID
+                     | <postfix_expression>
+
+---------
+POSTFIX
+---------
+
+<postfix_expression> ::= <primary_expression> <postfix_expression'>
+
+<postfix_expression'> ::= PLUS PLUS  <postfix_expression'>
+                        | MINUS MINUS <postfix_expression'>
+                        | LBRACKET <expression> RBRACKET <postfix_expression'>
+                        | LPAREN <argument_list_opt> RPAREN <postfix_expression'>
+                        | DOT ID <postfix_expression'>
+                        | ε
+
+---------
+PRIMARY
+---------
+
+<primary_expression> ::= ID
+                       | <literal>
+                       | LPAREN <expression> RPAREN
+
+---------
+ARGUMENT LIST
+---------
+
+<argument_list_opt> ::= <argument_list> | ε
+
+<argument_list>  ::= <expression> <argument_list'>
+
+<argument_list'> ::= COMMA <expression> <argument_list'>
+                   | ε
+
+---------
+LITERALS
+---------
+
+<literal> ::= INT_LITERAL
+            | FLOAT_LITERAL
+            | STRING_LITERAL
+            | CHAR_LITERAL
+            | <boolean_literal>
+
+<boolean_literal> ::= TRUE | FALSE
