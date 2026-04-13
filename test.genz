@@ -1,0 +1,6 @@
+maincharacter () {
+    number fr x fr 42;
+    muchotexto fr msg fr "hello;
+    letter fr c fr 'ab';
+    number fr y fr @;
+}

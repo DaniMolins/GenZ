@@ -1,26 +1,16 @@
-package src;
 public class Token {
-    private String type;
-    private String value;
+    public final TokenType type;
+    public final String value;
+    public final int line;
 
-    public Token(String type, String value) {
-        this.type = type;
+    public Token(TokenType type, String value, int line) {
+        this.type  = type;
         this.value = value;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public String getValue() {
-        return value;
+        this.line  = line;
     }
 
     @Override
     public String toString() {
-        return "Token{" +
-                "type='" + type + '\'' +
-                ", value='" + value + '\'' +
-                '}';
+        return "Token(" + type + ", \"" + value + "\", line=" + line + ")";
     }
 }

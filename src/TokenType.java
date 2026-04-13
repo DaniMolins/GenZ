@@ -1,13 +1,30 @@
-package src;
-public class TokenType {
-    public static final String IDENTIFIER = "IDENTIFIER";
-    public static final String NUMBER = "NUMBER";
-    public static final String STRING = "STRING";
-    public static final String KEYWORD = "KEYWORD";
-    public static final String OPERATOR = "OPERATOR";
-    public static final String SEPARATOR = "SEPARATOR";
-    public static final String EOF = "EOF";
-    public static final String ERROR = "ERROR";
+public enum TokenType {
+    // Types
+    NUMBER, REAL, MUCHOTEXTO, MAYBE, LETTER, SIXSEVEN, CONST, CATALOG,
+    // Booleans
+    TRUE, FALSE,
+    // Control Flow
+    HEARMEOUT, NVM, PERHAPS, CONSIDER, CHECKMEOUT, IDC,
+    // Loops
+    FAR, TAKEAS, POST_ONCE, KEEP_IT_GOING, RAGEQUIT, SAYLESS,
+    // Functions
+    SIDEQUEST, MICDROP, MAINCHARACTER,
+    // I/O
+    YAP, LISTENCLOSELY,
+    // Operators
+    ASSIGN, EQUALEQUAL, NOTEQUAL, GREATER, LESS, GREATEREQUAL, LESSEQUAL,
+    AND, OR, NOT,
+    // Arithmetic
+    PLUS, MINUS, STAR, SLASH, MOD,
+    // Punctuation
+    LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET,
+    LANGLE, RANGLE, SEMICOLON, COMMA, COLON, DOT, PIPE, AMPERSAND,
+    // Advanced
+    INJECT, OUTFIT, PICKS,
+    // Comments
+    SHORTYAP, LONGYAP,
+    // Literals & Identifiers
+    ID, INT_LITERAL, FLOAT_LITERAL, STRING_LITERAL, CHAR_LITERAL,
+    // Special
+    EOF, UNKNOWN
 }
-
-
