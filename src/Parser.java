@@ -528,14 +528,33 @@ public class Parser {
         return left;
     }
 
+    // <unary_expression> ::= NOT <unary_expression>
+    //                      | MINUS <unary_expression>
+    //                      | PLUS PLUS ID
+    //                      | MINUS MINUS ID
+    //                      | AMPERSAND ID
+    //                      | <postfix_expression>
     private TreeNode parseUnary() {
         TreeNode node = new TreeNode("unary_expression");
         if (check(TokenType.NOT)) {
             node.addChild(new TreeNode(match(TokenType.NOT)));
             node.addChild(parseUnary());
+        } else if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
+            // prefix increment: ++id
+            node.addChild(new TreeNode(advance())); // ++
+            node.addChild(new TreeNode(match(TokenType.ID)));
+        } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
+            // prefix decrement: --id
+            node.addChild(new TreeNode(advance())); // --
+            node.addChild(new TreeNode(match(TokenType.ID)));
         } else if (check(TokenType.MINUS)) {
+            // unary negation
             node.addChild(new TreeNode(match(TokenType.MINUS)));
             node.addChild(parseUnary());
+        } else if (check(TokenType.AMPERSAND)) {
+            // address-of: &id
+            node.addChild(new TreeNode(match(TokenType.AMPERSAND)));
+            node.addChild(new TreeNode(match(TokenType.ID)));
         } else {
             node.addChild(parsePostfix());
         }
