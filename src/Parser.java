@@ -523,7 +523,7 @@ public class Parser {
 
     private TreeNode parseMultiplicative() {
         TreeNode left = parseUnary();
-        while (check(TokenType.STAR) || check(TokenType.SLASH)) {
+        while (check(TokenType.STAR) || check(TokenType.SLASH) || check(TokenType.MOD)) {
             TreeNode node = new TreeNode("multiplicative_expression");
             node.addChild(left);
             node.addChild(new TreeNode(advance()));
