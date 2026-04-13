@@ -165,15 +165,11 @@ public class Parser {
         return node;
     }
 
-    // <param> ::= PIPE <type_specifier> PIPE PIPE ID PIPE
+    // <param> ::= <type_specifier> ID
     private TreeNode parseParam() {
         TreeNode node = new TreeNode("param");
-        node.addChild(new TreeNode(match(TokenType.PIPE)));
         node.addChild(parseTypeSpecifier());
-        node.addChild(new TreeNode(match(TokenType.PIPE)));
-        node.addChild(new TreeNode(match(TokenType.PIPE)));
         node.addChild(new TreeNode(match(TokenType.ID)));
-        node.addChild(new TreeNode(match(TokenType.PIPE)));
         return node;
     }
 
