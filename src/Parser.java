@@ -283,19 +283,24 @@ public class Parser {
         return node;
     }
 
+    // <case_clause> ::= CHECKMEOUT <literal> COLON <statement_list> RAGEQUIT SEMICOLON
     private TreeNode parseCaseClause() {
         TreeNode node = new TreeNode("case_clause");
         if (check(TokenType.CHECKMEOUT)) {
             node.addChild(new TreeNode(match(TokenType.CHECKMEOUT)));
             node.addChild(parseLiteral());
         } else {
+            // default case (idc)
             node.addChild(new TreeNode(match(TokenType.IDC)));
         }
         node.addChild(new TreeNode(match(TokenType.COLON)));
-        while (!check(TokenType.CHECKMEOUT) && !check(TokenType.IDC)
-                && !check(TokenType.RBRACE) && !check(TokenType.EOF)) {
+        // parse statements until ragequit
+        while (!check(TokenType.RAGEQUIT) && !check(TokenType.RBRACE) && !check(TokenType.EOF)) {
             node.addChild(parseStatement());
         }
+        // require ragequit; at end of each case
+        node.addChild(new TreeNode(match(TokenType.RAGEQUIT)));
+        node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         return node;
     }
 
