@@ -301,25 +301,26 @@ public class Parser {
 
     // ── LOOPS ───────────────────────────────────────────────
 
+    // <for_statement> ::= FAR LPAREN <for_init> COMMA <expression> COMMA <for_update> RPAREN <block>
     private TreeNode parseForStatement() {
         TreeNode node = new TreeNode("for_statement");
         node.addChild(new TreeNode(match(TokenType.FAR)));
         node.addChild(new TreeNode(match(TokenType.LPAREN)));
         node.addChild(parseForInit());
-        node.addChild(new TreeNode(match(TokenType.PIPE)));
+        node.addChild(new TreeNode(match(TokenType.COMMA)));
         node.addChild(parseExpression());
-        node.addChild(new TreeNode(match(TokenType.PIPE)));
+        node.addChild(new TreeNode(match(TokenType.COMMA)));
         node.addChild(parseForUpdate());
         node.addChild(new TreeNode(match(TokenType.RPAREN)));
         node.addChild(parseBlock());
         return node;
     }
 
+    // <for_init> ::= <type_specifier> ID ASSIGN <expression> | ID ASSIGN <expression> | ε
     private TreeNode parseForInit() {
         TreeNode node = new TreeNode("for_init");
         if (isTypeSpecifier()) {
             node.addChild(parseTypeSpecifier());
-            node.addChild(new TreeNode(match(TokenType.ASSIGN)));
             node.addChild(new TreeNode(match(TokenType.ID)));
             node.addChild(new TreeNode(match(TokenType.ASSIGN)));
             node.addChild(parseExpression());
@@ -328,14 +329,17 @@ public class Parser {
             node.addChild(new TreeNode(match(TokenType.ASSIGN)));
             node.addChild(parseExpression());
         }
+        // else: epsilon (empty init)
         return node;
     }
 
+    // <for_update> ::= ID ASSIGN <expression> | <expression> | ε
     private TreeNode parseForUpdate() {
         TreeNode node = new TreeNode("for_update");
         if (!check(TokenType.RPAREN)) {
             node.addChild(parseExpression());
         }
+        // else: epsilon (empty update)
         return node;
     }
 
