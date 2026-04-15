@@ -1,6 +1,8 @@
+shortyap Error test file - these should produce lexer errors
+
 maincharacter () {
-    number fr x fr 42;
-    muchotexto fr msg fr "hello;
-    letter fr c fr 'ab';
-    number fr y fr @;
+    number x fr 42;
+    muchotexto msg fr "hello;
+    letter c fr 'ab';
+    number y fr @;
 }
