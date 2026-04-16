@@ -1,17 +1,24 @@
+import compiler.error.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+/**
+ * Lexical analyzer for GenZ language.
+ * Features: tokenization, comment handling, spell checking for keywords.
+ */
 public class Lexer {
 
-    private final String source;   // código fuente completo
-    private int pos;               // posición actual
-    private int line;              // línea actual (para errores)
+    private final String source;
+    private int pos;
+    private int line;
+    private int column;
+    private int lineStart;
     private final List<Token> tokens;
-    private final List<LexerError> errors = new ArrayList<>();
+    private final ErrorHandler errorHandler;
 
-    // Mapa de palabras reservadas → TokenType
     private static final Map<String, TokenType> KEYWORDS = new HashMap<>();
 
     static {
@@ -56,31 +63,44 @@ public class Lexer {
         KEYWORDS.put("longyap",       TokenType.LONGYAP);
     }
 
-    public Lexer(String source) {
-        this.source = source;
-        this.pos    = 0;
-        this.line   = 1;
-        this.tokens = new ArrayList<>();
+    public static Set<String> getKeywords() {
+        return KEYWORDS.keySet();
     }
 
-    // Carácter actual
+    public Lexer(String source, ErrorHandler errorHandler) {
+        this.source = source;
+        this.pos = 0;
+        this.line = 1;
+        this.column = 1;
+        this.lineStart = 0;
+        this.tokens = new ArrayList<>();
+        this.errorHandler = errorHandler;
+    }
+
     private char current() {
         return pos < source.length() ? source.charAt(pos) : '\0';
     }
 
-    // Carácter siguiente (lookahead)
     private char peek() {
         return (pos + 1) < source.length() ? source.charAt(pos + 1) : '\0';
     }
 
-    // Avanzar posición
     private char advance() {
         char c = source.charAt(pos++);
-        if (c == '\n') line++;
+        if (c == '\n') {
+            line++;
+            column = 1;
+            lineStart = pos;
+        } else {
+            column++;
+        }
         return c;
     }
 
-    // Método principal — devuelve todos los tokens
+    private int currentColumn() {
+        return pos - lineStart + 1;
+    }
+
     public List<Token> tokenize() {
         while (pos < source.length()) {
             skipWhitespace();
@@ -110,26 +130,85 @@ public class Lexer {
         }
     }
 
-    // Lee identificadores y palabras reservadas
     private void readWord() {
+        int startCol = currentColumn();
         int start = pos;
+
         while (pos < source.length() &&
                 (Character.isLetterOrDigit(current()) || current() == '_')) {
             advance();
         }
+
         String word = source.substring(start, pos);
-        // Si está en el mapa → keyword, si no → identificador
         TokenType type = KEYWORDS.getOrDefault(word, TokenType.ID);
+
+        // Handle comments
+        if (type == TokenType.SHORTYAP) {
+            skipToEndOfLine();
+            return;
+        }
+        if (type == TokenType.LONGYAP) {
+            skipMultiLineComment();
+            return;
+        }
+
+        // Check for typos in keywords (only for identifiers)
+        if (type == TokenType.ID) {
+            String suggestion = errorHandler.findSimilarKeyword(word);
+            if (suggestion != null) {
+                // Store suggestion in token for parser to use
+                tokens.add(new Token(TokenType.ID, word, line, suggestion));
+                return;
+            }
+        }
+
         tokens.add(new Token(type, word, line));
     }
 
-    // Lee enteros y floats
+    private void skipToEndOfLine() {
+        while (pos < source.length() && current() != '\n') {
+            advance();
+        }
+    }
+
+    private void skipMultiLineComment() {
+        int startLine = line;
+        int startCol = currentColumn();
+
+        while (pos < source.length()) {
+            skipWhitespace();
+            if (pos >= source.length()) {
+                errorHandler.error(
+                        CompilerError.Type.SYNTAX_ERROR,
+                        "Unclosed multi-line comment - missing closing 'longyap'",
+                        startLine,
+                        startCol
+                );
+                return;
+            }
+            char c = current();
+            if (Character.isLetter(c)) {
+                int wordStart = pos;
+                while (pos < source.length() &&
+                        (Character.isLetterOrDigit(current()) || current() == '_')) {
+                    advance();
+                }
+                String word = source.substring(wordStart, pos);
+                if (word.equals("longyap")) {
+                    return;
+                }
+            } else {
+                advance();
+            }
+        }
+    }
+
     private void readNumber() {
         int start = pos;
         while (pos < source.length() && Character.isDigit(current())) advance();
 
         if (current() == '.' && Character.isDigit(peek())) {
-            advance(); // consume '.'
+            advance();
             while (pos < source.length() && Character.isDigit(current())) advance();
             tokens.add(new Token(TokenType.FLOAT_LITERAL, source.substring(start, pos), line));
         } else {
@@ -137,43 +216,68 @@ public class Lexer {
         }
     }
 
-    // Lee strings "..."
     private void readString() {
         int startLine = line;
-        advance(); // consume '"'
+        int startCol = currentColumn();
+        advance();
         int start = pos;
+
         while (pos < source.length() && current() != '"' && current() != '\n') {
             advance();
         }
+
         if (pos >= source.length() || current() == '\n') {
-            errors.add(new LexerError("Unclosed string literal", startLine));
+            errorHandler.error(
+                    CompilerError.Type.UNCLOSED_STRING,
+                    "Unclosed string literal - missing closing quote",
+                    startLine,
+                    startCol
+            );
             tokens.add(new Token(TokenType.UNKNOWN, source.substring(start, pos), startLine));
             return;
         }
+
         String value = source.substring(start, pos);
-        advance(); // consume '"' de cierre
+        advance();
         tokens.add(new Token(TokenType.STRING_LITERAL, value, startLine));
     }
 
-    // Lee chars '.'
     private void readChar() {
         int startLine = line;
-        advance(); // consume '\''
+        int startCol = currentColumn();
+        advance();
+
         if (pos >= source.length()) {
-            errors.add(new LexerError("Unclosed char literal", startLine));
+            errorHandler.error(
+                    CompilerError.Type.INVALID_CHAR_LITERAL,
+                    "Unclosed character literal - unexpected end of file",
+                    startLine,
+                    startCol
+            );
             return;
         }
+
         char value = advance();
         if (pos >= source.length() || current() != '\'') {
-            errors.add(new LexerError(
-                    "Invalid char literal: expected closing ' after '" + value + "'", startLine));
-            // consume hasta el cierre o fin de línea
-            while (pos < source.length() && current() != '\'' && current() != '\n') advance();
+            StringBuilder extraChars = new StringBuilder();
+            extraChars.append(value);
+            while (pos < source.length() && current() != '\'' && current() != '\n') {
+                extraChars.append(advance());
+            }
+            errorHandler.error(
+                    CompilerError.Type.INVALID_CHAR_LITERAL,
+                    "Invalid character literal '" + extraChars + "' - expected single character",
+                    startLine,
+                    startCol,
+                    extraChars.length() + 2,
+                    "Use muchotexto (string) for \"" + extraChars + "\" instead."
+            );
             if (check('\'')) advance();
-            tokens.add(new Token(TokenType.UNKNOWN, String.valueOf(value), startLine));
+            tokens.add(new Token(TokenType.UNKNOWN, extraChars.toString(), startLine));
             return;
         }
-        advance(); // consume '\'' de cierre
+
+        advance();
         tokens.add(new Token(TokenType.CHAR_LITERAL, String.valueOf(value), startLine));
     }
 
@@ -181,7 +285,6 @@ public class Lexer {
         return pos < source.length() && source.charAt(pos) == c;
     }
 
-    // Lee símbolos (+, -, ==, >=, etc.)
     private void readSymbol() {
         char c = advance();
         switch (c) {
@@ -221,17 +324,17 @@ public class Lexer {
                 else tokens.add(new Token(TokenType.UNKNOWN, "=", line));
                 break;
             default:
-                errors.add(new LexerError(
-                        "Unknown character '" + c + "'", line));
+                errorHandler.error(
+                        CompilerError.Type.UNKNOWN_CHARACTER,
+                        "Unknown character '" + c + "' (ASCII: " + (int)c + ")",
+                        line,
+                        currentColumn() - 1
+                );
                 tokens.add(new Token(TokenType.UNKNOWN, String.valueOf(c), line));
         }
     }
 
     public boolean hasErrors() {
-        return !errors.isEmpty();
-    }
-
-    public LexerError[] getErrors() {
-        return errors.toArray(new LexerError[0]);
+        return errorHandler.hasErrors(CompilerError.Phase.LEXER);
     }
 }
