@@ -1,62 +1,253 @@
+import compiler.error.*;
 import java.util.List;
+import java.util.Set;
+import java.util.EnumSet;
 
+/**
+ * Recursive descent parser for GenZ language.
+ * Features: FOLLOW-based error recovery, spell check integration.
+ */
 public class Parser {
 
     private final List<Token> tokens;
     private int pos;
     private Token currentToken;
+    private Token previousToken;
+    private final ErrorHandler errorHandler;
+    private boolean panicMode = false;
+    private boolean mainFunctionTypoRecovered = false;  // True if "maincharacter" was misspelled but recovered
 
-    public Parser(List<Token> tokens) {
-        this.tokens       = tokens;
-        this.pos          = 0;
+    // ═══════════════════════════════════════════════════════════════
+    // FOLLOW SETS (based on grammar.txt)
+    // ═══════════════════════════════════════════════════════════════
+
+    // FOLLOW(declaration) = FIRST(declaration) ∪ { MAINCHARACTER }
+    private static final Set<TokenType> FOLLOW_DECLARATION = EnumSet.of(
+            TokenType.INJECT, TokenType.OUTFIT, TokenType.PICKS,
+            TokenType.SIDEQUEST, TokenType.MAINCHARACTER, TokenType.EOF
+    );
+
+    // FOLLOW(statement) = FIRST(statement) ∪ { RBRACE }
+    private static final Set<TokenType> FOLLOW_STATEMENT = EnumSet.of(
+            // Control flow
+            TokenType.HEARMEOUT, TokenType.CONSIDER, TokenType.FAR,
+            TokenType.TAKEAS, TokenType.POST_ONCE, TokenType.MICDROP,
+            TokenType.RAGEQUIT, TokenType.SAYLESS, TokenType.YAP, TokenType.LISTENCLOSELY,
+            // Block
+            TokenType.LBRACE, TokenType.RBRACE,
+            // Type specifiers (for declarations/expressions)
+            TokenType.CONST, TokenType.CATALOG, TokenType.NUMBER, TokenType.REAL,
+            TokenType.MUCHOTEXTO, TokenType.MAYBE, TokenType.LETTER, TokenType.SIXSEVEN,
+            // ID (for assignments, calls)
+            TokenType.ID,
+            // Unary operators
+            TokenType.PLUS, TokenType.MINUS,
+            // Literals
+            TokenType.INT_LITERAL, TokenType.FLOAT_LITERAL, TokenType.STRING_LITERAL,
+            TokenType.CHAR_LITERAL, TokenType.TRUE, TokenType.FALSE,
+            // Parenthesized expression
+            TokenType.LPAREN,
+            // EOF
+            TokenType.EOF
+    );
+
+    // FOLLOW(expression) = tokens that can follow an expression
+    private static final Set<TokenType> FOLLOW_EXPRESSION = EnumSet.of(
+            TokenType.SEMICOLON, TokenType.RPAREN, TokenType.COMMA,
+            TokenType.RBRACKET, TokenType.RBRACE, TokenType.COLON, TokenType.EOF
+    );
+
+    // FOLLOW(block) = tokens that can follow a block
+    private static final Set<TokenType> FOLLOW_BLOCK = EnumSet.of(
+            // After function/control blocks
+            TokenType.INJECT, TokenType.OUTFIT, TokenType.PICKS, TokenType.SIDEQUEST,
+            TokenType.MAINCHARACTER, TokenType.EOF,
+            // else clauses
+            TokenType.NVM, TokenType.PERHAPS,
+            // keep_it_going after do-while block
+            TokenType.KEEP_IT_GOING,
+            // next statement
+            TokenType.HEARMEOUT, TokenType.CONSIDER, TokenType.FAR,
+            TokenType.TAKEAS, TokenType.POST_ONCE, TokenType.MICDROP,
+            TokenType.RAGEQUIT, TokenType.SAYLESS, TokenType.YAP, TokenType.LISTENCLOSELY,
+            TokenType.LBRACE, TokenType.RBRACE,
+            TokenType.CONST, TokenType.CATALOG, TokenType.NUMBER, TokenType.REAL,
+            TokenType.MUCHOTEXTO, TokenType.MAYBE, TokenType.LETTER, TokenType.SIXSEVEN,
+            TokenType.ID, TokenType.PLUS, TokenType.MINUS,
+            TokenType.INT_LITERAL, TokenType.FLOAT_LITERAL, TokenType.STRING_LITERAL,
+            TokenType.CHAR_LITERAL, TokenType.TRUE, TokenType.FALSE, TokenType.LPAREN
+    );
+
+    public Parser(List<Token> tokens, ErrorHandler errorHandler) {
+        this.tokens = tokens;
+        this.pos = 0;
         this.currentToken = tokens.get(0);
+        this.previousToken = null;
+        this.errorHandler = errorHandler;
     }
 
-    // ── Utilidades ─────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // UTILITIES
+    // ═══════════════════════════════════════════════════════════════
 
     private Token advance() {
-        Token t = currentToken;
+        previousToken = currentToken;
         if (pos < tokens.size() - 1) pos++;
         currentToken = tokens.get(pos);
-        return t;
+        return previousToken;
+    }
+
+    private Token previous() {
+        return previousToken;
     }
 
     private Token match(TokenType expected) {
         if (currentToken.type == expected) {
             return advance();
         }
-        throw new RuntimeException(
-                "Syntax error at line " + currentToken.line +
-                        ": expected " + expected +
-                        " but found " + currentToken.type +
-                        " (\"" + currentToken.value + "\")"
+
+        String suggestion = getSuggestionForMissingToken(expected);
+        errorHandler.error(
+                CompilerError.Type.MISSING_TOKEN,
+                "Expected " + expected + " but found " + currentToken.type + " (\"" + currentToken.value + "\")",
+                currentToken.line,
+                1,
+                suggestion
         );
+
+        return new Token(expected, "", currentToken.line);
+    }
+
+    private String getSuggestionForMissingToken(TokenType expected) {
+        switch (expected) {
+            case SEMICOLON: return "Add a semicolon ';' at the end of the statement.";
+            case RPAREN: return "Add a closing parenthesis ')'.";
+            case LPAREN: return "Add an opening parenthesis '('.";
+            case RBRACE: return "Add a closing brace '}'.";
+            case LBRACE: return "Add an opening brace '{'.";
+            case ID: return "An identifier (variable or function name) is expected here.";
+            default: return "Add the missing '" + expected + "' token.";
+        }
     }
 
     private boolean check(TokenType type) {
         return currentToken.type == type;
     }
 
+    private boolean isAtEnd() {
+        return currentToken.type == TokenType.EOF;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FOLLOW-BASED ERROR RECOVERY
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Synchronize to the FOLLOW set of the current construct.
+     * This is more precise than generic panic mode - we skip exactly
+     * until we find a token that can legitimately follow the construct
+     * we were trying to parse.
+     *
+     * @param followSet The FOLLOW set for the current non-terminal
+     */
+    private void synchronizeTo(Set<TokenType> followSet) {
+        panicMode = false;
+
+        while (!isAtEnd()) {
+            // If current token is in FOLLOW set, we can resume parsing
+            if (followSet.contains(currentToken.type)) {
+                return;
+            }
+
+            // Semicolon often ends statements - good sync point
+            if (previousToken != null && previousToken.type == TokenType.SEMICOLON) {
+                return;
+            }
+
+            advance();
+        }
+    }
+
+    /**
+     * Legacy synchronize - uses combined sync points for backwards compatibility.
+     * Prefer synchronizeTo(followSet) for context-aware recovery.
+     */
+    private void synchronize() {
+        synchronizeTo(FOLLOW_STATEMENT);
+    }
+
+    private void reportError(CompilerError.Type type, String message, String suggestion) {
+        if (!panicMode) {
+            errorHandler.error(type, message, currentToken.line, 1, suggestion);
+            panicMode = true;
+        }
+    }
+
+    /**
+     * Report error and synchronize to FOLLOW set in one call.
+     * Returns true if recovery was needed (an error occurred).
+     */
+    private boolean reportErrorAndSync(CompilerError.Type type, String message,
+                                       String suggestion, Set<TokenType> followSet) {
+        if (!panicMode) {
+            errorHandler.error(type, message, currentToken.line, 1, suggestion);
+            panicMode = true;
+            synchronizeTo(followSet);
+            return true;
+        }
+        return false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // TYPE CHECKS
+    // ═══════════════════════════════════════════════════════════════
+
+    public boolean hasErrors() {
+        return errorHandler.hasErrors(CompilerError.Phase.PARSER);
+    }
+
     private boolean isTypeSpecifier() {
         switch (currentToken.type) {
             case NUMBER: case REAL: case MUCHOTEXTO:
-            case MAYBE:  case LETTER: case SIXSEVEN:
-            case CONST:  case CATALOG:
+            case MAYBE: case LETTER: case SIXSEVEN:
+            case CONST: case CATALOG:
                 return true;
             default: return false;
         }
     }
 
-    // ── Entrada principal ───────────────────────────────────
+    private boolean isBaseType() {
+        switch (currentToken.type) {
+            case NUMBER: case REAL: case MUCHOTEXTO:
+            case MAYBE: case LETTER: case SIXSEVEN:
+                return true;
+            default: return false;
+        }
+    }
+
+    private boolean isLiteral() {
+        switch (currentToken.type) {
+            case INT_LITERAL: case FLOAT_LITERAL:
+            case STRING_LITERAL: case CHAR_LITERAL:
+            case TRUE: case FALSE:
+                return true;
+            default: return false;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MAIN ENTRY
+    // ═══════════════════════════════════════════════════════════════
 
     public ParseTree parse() {
         TreeNode root = parseProgram();
         return new ParseTree(root);
     }
 
-    // ── PROGRAM ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // PROGRAM
+    // ═══════════════════════════════════════════════════════════════
 
-    // <program> ::= <declaration_list> <main_function>
     private TreeNode parseProgram() {
         TreeNode node = new TreeNode("program");
         node.addChild(parseDeclarationList());
@@ -65,39 +256,89 @@ public class Parser {
         return node;
     }
 
-    // <declaration_list> ::= <declaration> <declaration_list'> | ε
-    // <declaration_list'> ::= <declaration> <declaration_list'> | ε
     private TreeNode parseDeclarationList() {
         TreeNode node = new TreeNode("declaration_list");
         while (!check(TokenType.MAINCHARACTER) && !check(TokenType.EOF)) {
-            node.addChild(parseDeclaration());
+            // Check if current token is an ID with a suggestion (possible typo)
+            if (check(TokenType.ID) && currentToken.hasSuggestion()) {
+                // Check if the suggestion is "maincharacter"
+                if ("maincharacter".equals(currentToken.suggestion)) {
+                    // Report the typo but treat it as maincharacter
+                    // Store the misspelled token for error reporting
+                    Token misspelled = currentToken;
+                    errorHandler.error(
+                            CompilerError.Type.UNKNOWN_IDENTIFIER,
+                            "Unknown identifier '" + misspelled.value + "'",
+                            misspelled.line,
+                            1,
+                            misspelled.value.length(),
+                            "Did you mean '" + misspelled.suggestion + "'?"
+                    );
+                    // Advance past the misspelled ID - we'll treat it as maincharacter
+                    advance();
+                    // Mark that we found the "main function start" via typo recovery
+                    mainFunctionTypoRecovered = true;
+                    break;
+                }
+            }
+
+            TreeNode decl = parseDeclaration();
+            if (decl != null) {
+                node.addChild(decl);
+            }
+
+            // If we're in panic mode, synchronize to declaration FOLLOW set
+            if (panicMode) {
+                synchronizeTo(FOLLOW_DECLARATION);
+            }
         }
         return node;
     }
 
-    // <declaration> ::= <import_statement>
-    //                 | <struct_declaration>
-    //                 | <enum_declaration>
-    //                 | <function_declaration>
     private TreeNode parseDeclaration() {
         TreeNode node = new TreeNode("declaration");
         switch (currentToken.type) {
-            case INJECT:      node.addChild(parseImportStatement());     break;
-            case OUTFIT:      node.addChild(parseStructDeclaration());   break;
-            case PICKS:       node.addChild(parseEnumDeclaration());     break;
-            case SIDEQUEST:   node.addChild(parseFunctionDeclaration()); break;
+            case INJECT:
+                node.addChild(parseImportStatement());
+                break;
+            case OUTFIT:
+                node.addChild(parseStructDeclaration());
+                break;
+            case PICKS:
+                node.addChild(parseEnumDeclaration());
+                break;
+            case SIDEQUEST:
+                node.addChild(parseFunctionDeclaration());
+                break;
             default:
-                throw new RuntimeException(
-                        "Syntax error at line " + currentToken.line +
-                                ": expected declaration (inject, outfit, picks, or sidequest) " +
-                                "but found " + currentToken.type);
+                // Check for typo
+                if (currentToken.hasSuggestion()) {
+                    errorHandler.error(
+                            CompilerError.Type.UNKNOWN_IDENTIFIER,
+                            "Unknown identifier '" + currentToken.value + "'",
+                            currentToken.line,
+                            1,
+                            currentToken.value.length(),
+                            "Did you mean '" + currentToken.suggestion + "'?"
+                    );
+                } else {
+                    reportError(
+                            CompilerError.Type.UNEXPECTED_TOKEN,
+                            "Expected declaration (inject, outfit, picks, or sidequest) but found " + currentToken.type,
+                            "Top-level code must be: inject (import), outfit (struct), picks (enum), or sidequest (function)."
+                    );
+                }
+                // Sync to FOLLOW(declaration) to find next valid declaration or maincharacter
+                synchronizeTo(FOLLOW_DECLARATION);
+                return null;
         }
         return node;
     }
 
-    // ── DECLARATIONS ────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // DECLARATIONS
+    // ═══════════════════════════════════════════════════════════════
 
-    // <variable_declaration> ::= <type_specifier> ID ASSIGN <expression> SEMICOLON
     private TreeNode parseVariableDeclaration() {
         TreeNode node = new TreeNode("variable_declaration");
         node.addChild(parseTypeSpecifier());
@@ -108,7 +349,6 @@ public class Parser {
         return node;
     }
 
-    // <constant_declaration> ::= CONST <type_specifier> ID ASSIGN <expression> SEMICOLON
     private TreeNode parseConstantDeclaration() {
         TreeNode node = new TreeNode("constant_declaration");
         node.addChild(new TreeNode(match(TokenType.CONST)));
@@ -120,9 +360,10 @@ public class Parser {
         return node;
     }
 
-    // ── FUNCTIONS ───────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════
 
-    // <function_declaration> ::= SIDEQUEST <type_specifier> ID LPAREN <param_list_opt> RPAREN <block>
     private TreeNode parseFunctionDeclaration() {
         TreeNode node = new TreeNode("function_declaration");
         node.addChild(new TreeNode(match(TokenType.SIDEQUEST)));
@@ -135,17 +376,21 @@ public class Parser {
         return node;
     }
 
-    // <main_function> ::= MAINCHARACTER LPAREN RPAREN <block>
     private TreeNode parseMainFunction() {
         TreeNode node = new TreeNode("main_function");
-        node.addChild(new TreeNode(match(TokenType.MAINCHARACTER)));
+        // If we recovered from a "maincharacter" typo, we already consumed the ID
+        if (mainFunctionTypoRecovered) {
+            // Create a synthetic MAINCHARACTER token for the tree
+            node.addChild(new TreeNode(new Token(TokenType.MAINCHARACTER, "maincharacter", currentToken.line)));
+        } else {
+            node.addChild(new TreeNode(match(TokenType.MAINCHARACTER)));
+        }
         node.addChild(new TreeNode(match(TokenType.LPAREN)));
         node.addChild(new TreeNode(match(TokenType.RPAREN)));
         node.addChild(parseBlock());
         return node;
     }
 
-    // <param_list_opt> ::= <param_list> | epsilon
     private TreeNode parseParamListOpt() {
         TreeNode node = new TreeNode("param_list_opt");
         if (!check(TokenType.RPAREN)) {
@@ -164,7 +409,6 @@ public class Parser {
         return node;
     }
 
-    // <param> ::= <type_specifier> ID
     private TreeNode parseParam() {
         TreeNode node = new TreeNode("param");
         node.addChild(parseTypeSpecifier());
@@ -172,7 +416,9 @@ public class Parser {
         return node;
     }
 
-    // ── TYPES ───────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // TYPES
+    // ═══════════════════════════════════════════════════════════════
 
     private TreeNode parseTypeSpecifier() {
         TreeNode node = new TreeNode("type_specifier");
@@ -194,65 +440,64 @@ public class Parser {
         TreeNode node = new TreeNode("base_type");
         switch (currentToken.type) {
             case NUMBER: case REAL: case MUCHOTEXTO:
-            case MAYBE:  case LETTER: case SIXSEVEN:
+            case MAYBE: case LETTER: case SIXSEVEN:
                 node.addChild(new TreeNode(advance()));
                 break;
             default:
-                throw new RuntimeException(
-                        "Syntax error at line " + currentToken.line +
-                                ": expected base type but found " + currentToken.type);
+                reportError(
+                        CompilerError.Type.UNEXPECTED_TOKEN,
+                        "Expected base type but found " + currentToken.type,
+                        "Valid types are: number, real, muchotexto, maybe, letter, sixseven."
+                );
+                // Insert a placeholder type to allow parsing to continue
+                node.addChild(new TreeNode(new Token(TokenType.NUMBER, "number", currentToken.line)));
+                // Don't sync here - let the caller handle recovery based on their FOLLOW set
         }
         return node;
     }
 
-    // ── BLOCK & STATEMENTS ──────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // BLOCK & STATEMENTS
+    // ═══════════════════════════════════════════════════════════════
 
     private TreeNode parseBlock() {
         TreeNode node = new TreeNode("block");
         node.addChild(new TreeNode(match(TokenType.LBRACE)));
         while (!check(TokenType.RBRACE) && !check(TokenType.EOF)) {
             node.addChild(parseStatement());
+            if (panicMode) {
+                // Sync to FOLLOW(statement) to find next valid statement or RBRACE
+                synchronizeTo(FOLLOW_STATEMENT);
+            }
         }
         node.addChild(new TreeNode(match(TokenType.RBRACE)));
         return node;
     }
 
-    // <statement> ::= <if_statement> | <switch_statement> | <for_statement>
-    //               | <while_statement> | <do_while_statement>
-    //               | <break_statement> | <continue_statement> | <return_statement>
-    //               | <print_statement> | <input_statement>
-    //               | <block> | <open_statement>
     private TreeNode parseStatement() {
         TreeNode node = new TreeNode("statement");
         switch (currentToken.type) {
-            case HEARMEOUT:   node.addChild(parseIfStatement());         break;
-            case CONSIDER:    node.addChild(parseSwitchStatement());     break;
-            case FAR:         node.addChild(parseForStatement());        break;
-            case TAKEAS:      node.addChild(parseWhileStatement());      break;
-            case POST_ONCE:   node.addChild(parseDoWhileStatement());    break;
-            case MICDROP:     node.addChild(parseReturnStatement());     break;
-            case RAGEQUIT:    node.addChild(parseBreakStatement());      break;
-            case SAYLESS:     node.addChild(parseContinueStatement());   break;
-            case YAP:         node.addChild(parsePrintStatement());      break;
-            case LISTENCLOSELY: node.addChild(parseInputStatement());    break;
-            case LBRACE:      node.addChild(parseBlock());               break;
+            case HEARMEOUT:   node.addChild(parseIfStatement());       break;
+            case CONSIDER:    node.addChild(parseSwitchStatement());   break;
+            case FAR:         node.addChild(parseForStatement());      break;
+            case TAKEAS:      node.addChild(parseWhileStatement());    break;
+            case POST_ONCE:   node.addChild(parseDoWhileStatement());  break;
+            case MICDROP:     node.addChild(parseReturnStatement());   break;
+            case RAGEQUIT:    node.addChild(parseBreakStatement());    break;
+            case SAYLESS:     node.addChild(parseContinueStatement()); break;
+            case YAP:         node.addChild(parsePrintStatement());    break;
+            case LISTENCLOSELY: node.addChild(parseInputStatement());  break;
+            case LBRACE:      node.addChild(parseBlock());             break;
             default:
-                // Handle open_statement for: CONST, types, ID, literals, (expr)
                 node.addChild(parseOpenStatement());
         }
         return node;
     }
 
-    // <open_statement> ::= CONST <base_type> ID ASSIGN <expression> SEMICOLON
-    //                    | <type_specifier_no_const> <decl_or_expr_tail>
-    //                    | ID <id_led_tail>
-    //                    | <literal> SEMICOLON
-    //                    | LPAREN <expression> RPAREN SEMICOLON
     private TreeNode parseOpenStatement() {
         TreeNode node = new TreeNode("open_statement");
 
         if (check(TokenType.CONST)) {
-            // CONST <base_type> ID ASSIGN <expression> SEMICOLON
             node.addChild(new TreeNode(match(TokenType.CONST)));
             node.addChild(parseBaseType());
             node.addChild(new TreeNode(match(TokenType.ID)));
@@ -260,32 +505,39 @@ public class Parser {
             node.addChild(parseExpression());
             node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         } else if (check(TokenType.CATALOG) || isBaseType()) {
-            // <type_specifier_no_const> <decl_or_expr_tail>
             node.addChild(parseTypeSpecifierNoConst());
             node.addChild(parseDeclOrExprTail());
         } else if (check(TokenType.ID)) {
-            // ID <id_led_tail>
             node.addChild(new TreeNode(match(TokenType.ID)));
             node.addChild(parseIdLedTail());
+        } else if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
+            node.addChild(new TreeNode(advance()));
+            node.addChild(new TreeNode(match(TokenType.ID)));
+            node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
+        } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
+            node.addChild(new TreeNode(advance()));
+            node.addChild(new TreeNode(match(TokenType.ID)));
+            node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         } else if (check(TokenType.LPAREN)) {
-            // LPAREN <expression> RPAREN SEMICOLON
             node.addChild(new TreeNode(match(TokenType.LPAREN)));
             node.addChild(parseExpression());
             node.addChild(new TreeNode(match(TokenType.RPAREN)));
             node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         } else if (isLiteral()) {
-            // <literal> SEMICOLON
             node.addChild(parseLiteral());
             node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         } else {
-            throw new RuntimeException(
-                    "Syntax error at line " + currentToken.line +
-                            ": unexpected token " + currentToken.type + " in statement");
+            reportError(
+                    CompilerError.Type.UNEXPECTED_TOKEN,
+                    "Unexpected token " + currentToken.type + " (\"" + currentToken.value + "\") in statement",
+                    "Expected a statement: variable declaration, assignment, function call, or control flow."
+            );
+            // Sync to FOLLOW(statement) to find next valid statement position
+            synchronizeTo(FOLLOW_STATEMENT);
         }
         return node;
     }
 
-    // <type_specifier_no_const> ::= CATALOG LANGLE <base_type> RANGLE | <base_type>
     private TreeNode parseTypeSpecifierNoConst() {
         TreeNode node = new TreeNode("type_specifier_no_const");
         if (check(TokenType.CATALOG)) {
@@ -299,7 +551,6 @@ public class Parser {
         return node;
     }
 
-    // <decl_or_expr_tail> ::= ID ASSIGN <expression> SEMICOLON | SEMICOLON
     private TreeNode parseDeclOrExprTail() {
         TreeNode node = new TreeNode("decl_or_expr_tail");
         if (check(TokenType.ID)) {
@@ -311,13 +562,6 @@ public class Parser {
         return node;
     }
 
-    // <id_led_tail> ::= ASSIGN <expression> SEMICOLON
-    //                 | LPAREN <argument_list_opt> RPAREN SEMICOLON
-    //                 | LBRACKET <expression> RBRACKET <id_led_tail'>
-    //                 | PLUS PLUS SEMICOLON
-    //                 | MINUS MINUS SEMICOLON
-    //                 | DOT ID <id_led_tail>
-    //                 | SEMICOLON
     private TreeNode parseIdLedTail() {
         TreeNode node = new TreeNode("id_led_tail");
         if (check(TokenType.ASSIGN)) {
@@ -335,23 +579,21 @@ public class Parser {
             node.addChild(new TreeNode(match(TokenType.RBRACKET)));
             node.addChild(parseIdLedTailPrime());
         } else if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
-            node.addChild(new TreeNode(advance())); // ++
+            node.addChild(new TreeNode(advance()));
             node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
-            node.addChild(new TreeNode(advance())); // --
+            node.addChild(new TreeNode(advance()));
             node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         } else if (check(TokenType.DOT)) {
             node.addChild(new TreeNode(match(TokenType.DOT)));
             node.addChild(new TreeNode(match(TokenType.ID)));
             node.addChild(parseIdLedTail());
         } else {
-            // just SEMICOLON
             node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         }
         return node;
     }
 
-    // <id_led_tail'> ::= ASSIGN <expression> SEMICOLON | SEMICOLON
     private TreeNode parseIdLedTailPrime() {
         TreeNode node = new TreeNode("id_led_tail_prime");
         if (check(TokenType.ASSIGN)) {
@@ -362,26 +604,9 @@ public class Parser {
         return node;
     }
 
-    private boolean isBaseType() {
-        switch (currentToken.type) {
-            case NUMBER: case REAL: case MUCHOTEXTO:
-            case MAYBE:  case LETTER: case SIXSEVEN:
-                return true;
-            default: return false;
-        }
-    }
-
-    private boolean isLiteral() {
-        switch (currentToken.type) {
-            case INT_LITERAL: case FLOAT_LITERAL:
-            case STRING_LITERAL: case CHAR_LITERAL:
-            case TRUE: case FALSE:
-                return true;
-            default: return false;
-        }
-    }
-
-    // ── CONTROL FLOW ────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // CONTROL FLOW
+    // ═══════════════════════════════════════════════════════════════
 
     private TreeNode parseIfStatement() {
         TreeNode node = new TreeNode("if_statement");
@@ -428,30 +653,35 @@ public class Parser {
         return node;
     }
 
-    // <case_clause> ::= CHECKMEOUT <literal> COLON <statement_list> RAGEQUIT SEMICOLON
     private TreeNode parseCaseClause() {
         TreeNode node = new TreeNode("case_clause");
         if (check(TokenType.CHECKMEOUT)) {
             node.addChild(new TreeNode(match(TokenType.CHECKMEOUT)));
             node.addChild(parseLiteral());
         } else {
-            // default case (idc)
             node.addChild(new TreeNode(match(TokenType.IDC)));
         }
         node.addChild(new TreeNode(match(TokenType.COLON)));
-        // parse statements until ragequit
-        while (!check(TokenType.RAGEQUIT) && !check(TokenType.RBRACE) && !check(TokenType.EOF)) {
+        while (!check(TokenType.RAGEQUIT) && !check(TokenType.RBRACE) &&
+               !check(TokenType.CHECKMEOUT) && !check(TokenType.IDC) && !check(TokenType.EOF)) {
             node.addChild(parseStatement());
+            if (panicMode) {
+                // Sync to end of case (RAGEQUIT) or next case/default
+                synchronizeTo(EnumSet.of(
+                        TokenType.RAGEQUIT, TokenType.RBRACE,
+                        TokenType.CHECKMEOUT, TokenType.IDC, TokenType.EOF
+                ));
+            }
         }
-        // require ragequit; at end of each case
         node.addChild(new TreeNode(match(TokenType.RAGEQUIT)));
         node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         return node;
     }
 
-    // ── LOOPS ───────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // LOOPS
+    // ═══════════════════════════════════════════════════════════════
 
-    // <for_statement> ::= FAR LPAREN <for_init> COMMA <expression> COMMA <for_update> RPAREN <block>
     private TreeNode parseForStatement() {
         TreeNode node = new TreeNode("for_statement");
         node.addChild(new TreeNode(match(TokenType.FAR)));
@@ -466,7 +696,6 @@ public class Parser {
         return node;
     }
 
-    // <for_init> ::= <type_specifier> ID ASSIGN <expression> | ID ASSIGN <expression> | ε
     private TreeNode parseForInit() {
         TreeNode node = new TreeNode("for_init");
         if (isTypeSpecifier()) {
@@ -479,17 +708,14 @@ public class Parser {
             node.addChild(new TreeNode(match(TokenType.ASSIGN)));
             node.addChild(parseExpression());
         }
-        // else: epsilon (empty init)
         return node;
     }
 
-    // <for_update> ::= ID ASSIGN <expression> | <expression> | ε
     private TreeNode parseForUpdate() {
         TreeNode node = new TreeNode("for_update");
         if (!check(TokenType.RPAREN)) {
             node.addChild(parseExpression());
         }
-        // else: epsilon (empty update)
         return node;
     }
 
@@ -515,7 +741,9 @@ public class Parser {
         return node;
     }
 
-    // ── SIMPLE STATEMENTS ───────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // SIMPLE STATEMENTS
+    // ═══════════════════════════════════════════════════════════════
 
     private TreeNode parseReturnStatement() {
         TreeNode node = new TreeNode("return_statement");
@@ -568,7 +796,9 @@ public class Parser {
         return node;
     }
 
-    // ── EXPRESSIONS ─────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // EXPRESSIONS
+    // ═══════════════════════════════════════════════════════════════
 
     private TreeNode parseExpression() {
         return parseAssignmentExpression();
@@ -662,31 +892,21 @@ public class Parser {
         return left;
     }
 
-    // <unary_expression> ::= NOT <unary_expression>
-    //                      | MINUS <unary_expression>
-    //                      | PLUS PLUS ID
-    //                      | MINUS MINUS ID
-    //                      | AMPERSAND ID
-    //                      | <postfix_expression>
     private TreeNode parseUnary() {
         TreeNode node = new TreeNode("unary_expression");
         if (check(TokenType.NOT)) {
             node.addChild(new TreeNode(match(TokenType.NOT)));
             node.addChild(parseUnary());
         } else if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
-            // prefix increment: ++id
-            node.addChild(new TreeNode(advance())); // ++
+            node.addChild(new TreeNode(advance()));
             node.addChild(new TreeNode(match(TokenType.ID)));
         } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
-            // prefix decrement: --id
-            node.addChild(new TreeNode(advance())); // --
+            node.addChild(new TreeNode(advance()));
             node.addChild(new TreeNode(match(TokenType.ID)));
         } else if (check(TokenType.MINUS)) {
-            // unary negation
             node.addChild(new TreeNode(match(TokenType.MINUS)));
             node.addChild(parseUnary());
         } else if (check(TokenType.AMPERSAND)) {
-            // address-of: &id
             node.addChild(new TreeNode(match(TokenType.AMPERSAND)));
             node.addChild(new TreeNode(match(TokenType.ID)));
         } else {
@@ -695,7 +915,6 @@ public class Parser {
         return node;
     }
 
-    // <postfix_expression> ::= <primary_expression> <postfix_expression'>
     private TreeNode parsePostfix() {
         TreeNode node = new TreeNode("postfix_expression");
         node.addChild(parsePrimary());
@@ -703,18 +922,12 @@ public class Parser {
         return node;
     }
 
-    // <postfix_expression'> ::= PLUS PLUS <postfix_expression'>
-    //                         | MINUS MINUS <postfix_expression'>
-    //                         | LBRACKET <expression> RBRACKET <postfix_expression'>
-    //                         | LPAREN <argument_list_opt> RPAREN <postfix_expression'>
-    //                         | DOT ID <postfix_expression'>
-    //                         | ε
     private void parsePostfixPrime(TreeNode node) {
         if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
-            node.addChild(new TreeNode(advance())); // ++
+            node.addChild(new TreeNode(advance()));
             parsePostfixPrime(node);
         } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
-            node.addChild(new TreeNode(advance())); // --
+            node.addChild(new TreeNode(advance()));
             parsePostfixPrime(node);
         } else if (check(TokenType.LBRACKET)) {
             node.addChild(new TreeNode(match(TokenType.LBRACKET)));
@@ -731,7 +944,6 @@ public class Parser {
             node.addChild(new TreeNode(match(TokenType.ID)));
             parsePostfixPrime(node);
         }
-        // else: epsilon
     }
 
     private TreeNode parsePrimary() {
@@ -757,14 +969,21 @@ public class Parser {
                 node.addChild(new TreeNode(advance()));
                 break;
             default:
-                throw new RuntimeException(
-                        "Syntax error at line " + currentToken.line +
-                                ": expected literal but found " + currentToken.type);
+                reportError(
+                        CompilerError.Type.UNEXPECTED_TOKEN,
+                        "Expected literal but found " + currentToken.type,
+                        "Valid literals: numbers (42, 3.14), strings (\"text\"), chars ('a'), booleans (nocap, cap)."
+                );
+                // Insert placeholder and sync to FOLLOW(expression) since literals appear in expressions
+                node.addChild(new TreeNode(new Token(TokenType.INT_LITERAL, "0", currentToken.line)));
+                synchronizeTo(FOLLOW_EXPRESSION);
         }
         return node;
     }
 
-    // ── FUNCTION CALL ARGS ──────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // FUNCTION CALL ARGS
+    // ═══════════════════════════════════════════════════════════════
 
     private TreeNode parseArgumentListOpt() {
         TreeNode node = new TreeNode("argument_list_opt");
@@ -784,7 +1003,9 @@ public class Parser {
         return node;
     }
 
-    // ── STRUCTS / ENUMS / IMPORTS ───────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // STRUCTS / ENUMS / IMPORTS
+    // ═══════════════════════════════════════════════════════════════
 
     private TreeNode parseStructDeclaration() {
         TreeNode node = new TreeNode("struct_declaration");
@@ -793,6 +1014,14 @@ public class Parser {
         node.addChild(new TreeNode(match(TokenType.LBRACE)));
         while (!check(TokenType.RBRACE) && !check(TokenType.EOF)) {
             node.addChild(parseVariableDeclaration());
+            if (panicMode) {
+                // Sync to next type specifier (start of var decl) or RBRACE
+                synchronizeTo(EnumSet.of(
+                        TokenType.NUMBER, TokenType.REAL, TokenType.MUCHOTEXTO,
+                        TokenType.MAYBE, TokenType.LETTER, TokenType.SIXSEVEN,
+                        TokenType.CONST, TokenType.CATALOG, TokenType.RBRACE, TokenType.EOF
+                ));
+            }
         }
         node.addChild(new TreeNode(match(TokenType.RBRACE)));
         node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
