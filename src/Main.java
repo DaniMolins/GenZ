@@ -1,39 +1,46 @@
+import compiler.error.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
 
+/**
+ * Main entry point for the GenZ compiler.
+ */
 public class Main {
     public static void main(String[] args) throws IOException {
-        String source = new String(Files.readAllBytes(Paths.get("test2.genz")));
+        String source = new String(Files.readAllBytes(Paths.get("test.genz")));
 
-        Lexer lexer = new Lexer(source);
+        // Create shared error handler with keywords for spell checking
+        ErrorHandler errorHandler = new ErrorHandler(source, Lexer.getKeywords());
+
+        // Lexer phase
+        Lexer lexer = new Lexer(source, errorHandler);
         List<Token> tokens = lexer.tokenize();
 
-        // Muestra errores si los hay
+        // Check for lexer errors
         if (lexer.hasErrors()) {
-            System.out.println("=== LEXER ERRORS ===");
-            for (LexerError error : lexer.getErrors()) {
-                System.out.println(error);
-            }
-            System.out.println("====================\n");
+            errorHandler.printErrors(CompilerError.Phase.LEXER);
             return;
         }
 
-        // Muestra los tokens igualmente
+        // Show tokens
         System.out.println("=== TOKENS ===");
         for (Token token : tokens) {
             System.out.println(token);
         }
 
-        Parser parser = new Parser(tokens);
+        // Parser phase
+        Parser parser = new Parser(tokens, errorHandler);
         ParseTree parseTree = parser.parse();
+
+        // Check for parser errors
+        if (parser.hasErrors()) {
+            System.out.println();
+            errorHandler.printErrors(CompilerError.Phase.PARSER);
+            return;
+        }
+
         parseTree.print();
-
-
-
-
-
-
     }
 }
