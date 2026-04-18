@@ -9,22 +9,18 @@ import java.util.List;
  */
 public class Main {
     public static void main(String[] args) throws IOException {
-        String source = new String(Files.readAllBytes(Paths.get("test.genz")));
+        String source = new String(Files.readAllBytes(Paths.get("files/calculator_errors.genz")));
 
-        // Create shared error handler with keywords for spell checking
         ErrorHandler errorHandler = new ErrorHandler(source, Lexer.getKeywords());
 
-        // Lexer phase
         Lexer lexer = new Lexer(source, errorHandler);
         List<Token> tokens = lexer.tokenize();
 
-        // Check for lexer errors
         if (lexer.hasErrors()) {
             errorHandler.printErrors(CompilerError.Phase.LEXER);
-            return;
+            //return;
         }
 
-        // Show tokens
         System.out.println("=== TOKENS ===");
         for (Token token : tokens) {
             System.out.println(token);
@@ -38,9 +34,18 @@ public class Main {
         if (parser.hasErrors()) {
             System.out.println();
             errorHandler.printErrors(CompilerError.Phase.PARSER);
-            return;
+            //return;
         }
 
         parseTree.print();
+        Semantic semantic = new Semantic(parseTree, errorHandler);
+        semantic.analyze();
+        if (semantic.hasErrors()) {
+            System.out.println();
+            errorHandler.printErrors(CompilerError.Phase.SEMANTIC);
+            System.out.println("Semantic incorrect");
+            return;
+        }
+        System.out.println("Semantic correct");
     }
 }

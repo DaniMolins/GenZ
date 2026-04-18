@@ -1,0 +1,72 @@
+shortyap Mini inventory system using outfit, picks and logical operators
+
+picks Category {
+    FOOD, DRINK, CLEANING, OTHER
+};
+
+outfit Product {
+    muchotexto name fr "no name";
+    number price fr 0;
+    number stock fr 0;
+};
+
+sidequest sixseven showCategory(number c) {
+    consider (c) {
+        checkmeout 0:
+            yap("Category: FOOD");
+            ragequit;
+        checkmeout 1:
+            yap("Category: DRINK");
+            ragequit;
+        checkmeout 2:
+            yap("Category: CLEANING");
+            ragequit;
+        idc:
+            yap("Category: OTHER");
+            ragequit;
+    }
+}
+
+sidequest number priceWithTax(number price, number tax) {
+    micdrop price + (price * tax) / 100;
+}
+
+sidequest maybe inRange(number value, number min, number max) {
+    micdrop value highkey min same value lowkey max;
+}
+
+maincharacter () {
+    solid number TAX fr 21;
+    solid number STOCK_MIN fr 5;
+    solid number STOCK_MAX fr 100;
+
+    yap("=== Inventory ===");
+
+    far (number c fr 0, c lowkey 4, c++) {
+        showCategory(c);
+    }
+
+    number basePrice fr 80;
+    yap("Base price = ", basePrice);
+    yap("Price with tax = ", priceWithTax(basePrice, TAX));
+
+    number currentStock fr 42;
+    maybe stockOk fr inRange(currentStock, STOCK_MIN, STOCK_MAX);
+    hearmeout (stockOk == nocap) {
+        yap("Stock within range");
+    } nvm {
+        yap("Stock out of range");
+    }
+
+    number total fr 0;
+    far (number i fr 1, i lowkey 6, i++) {
+        hearmeout (i % 2 == 0) {
+            total fr total + i;
+        } nvm {
+            sayless;
+        }
+    }
+    yap("Sum of even numbers from 1 to 5 = ", total);
+
+    yap("=== End ===");
+}

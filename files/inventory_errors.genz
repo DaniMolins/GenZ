@@ -1,0 +1,72 @@
+shortyap ============================================================
+shortyap INTENTIONAL ERRORS IN THIS FILE:
+shortyap   1. LEXER  - unknown character '@' in source
+shortyap   2. PARSER - missing comma in for header (uses ';' instead)
+shortyap   3. PARSER - missing RBRACE on the picks declaration
+shortyap   4. SEMANTIC - duplicate enum value "FOOD"
+shortyap   5. SEMANTIC - calling something that is not a function (TAX)
+shortyap   6. SEMANTIC - struct field access on a non-struct (price.x)
+shortyap   7. SEMANTIC - logical operator with non-boolean operand
+shortyap   8. SEMANTIC - relational comparison on a string
+shortyap   9. SEMANTIC - return type mismatch (returning string from number)
+shortyap  10. SEMANTIC - sayless (continue) used outside of a loop
+shortyap  11. SEMANTIC - undeclared variable "missingVar" in yap
+shortyap ============================================================
+
+shortyap Error 4: duplicate value FOOD
+shortyap Error 3: missing closing brace on this picks
+picks Category {
+    FOOD, DRINK, FOOD, OTHER
+;
+
+outfit Product {
+    muchotexto name fr "no name";
+    number price fr 0;
+    number stock fr 0;
+};
+
+sidequest number priceWithTax(number price, number tax) {
+    shortyap Error 9: returning a string from a number-typed function
+    micdrop "expensive";
+}
+
+sidequest maybe inRange(number value, number min, number max) {
+    shortyap Error 7: 'same' applied to a numeric operand on the right
+    micdrop value highkey min same max;
+}
+
+maincharacter () {
+    solid number TAX fr 21;
+
+    yap("=== Inventory with errors ===");
+
+    shortyap Error 1: unknown character '@'
+    number weird fr 10 @ 2;
+
+    shortyap Error 2: ';' instead of ',' inside the for header
+    far (number c fr 0; c lowkey 4, c++) {
+        yap(c);
+    }
+
+    shortyap Error 5: TAX is a constant, not a function
+    number bad fr TAX(100);
+
+    shortyap Error 6: '.' on a non-struct (price is a number)
+    number basePrice fr 80;
+    number broken fr basePrice.x;
+
+    shortyap Error 8: relational comparison between strings
+    muchotexto a fr "hello";
+    muchotexto b fr "world";
+    hearmeout (a lowkey b) {
+        yap("never");
+    }
+
+    shortyap Error 10: sayless outside any loop
+    sayless;
+
+    shortyap Error 11: missingVar was never declared
+    yap("Result = ", missingVar);
+
+    yap("=== End ===");
+}

@@ -2,18 +2,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TreeNode {
-    public final String label;           // nombre del no-terminal o token
-    public final Token token;            // null si es no-terminal
+    public final String label;           // non-terminal or token name
+    public final Token token;            // null when this is a non-terminal
     public final List<TreeNode> children;
 
-    // Constructor para no-terminales
+    // Constructor for non-terminals
     public TreeNode(String label) {
         this.label    = label;
         this.token    = null;
         this.children = new ArrayList<>();
     }
 
-    // Constructor para terminales (hojas)
+    // Constructor for terminals (leaves)
     public TreeNode(Token token) {
         this.label    = token.type.name();
         this.token    = token;
@@ -24,7 +24,7 @@ public class TreeNode {
         children.add(child);
     }
 
-    // Imprime el árbol con indentación
+    // Prints the tree with indentation
     public void print(String indent) {
         if (token != null) {
             System.out.println(indent + "[" + label + " = \"" + token.value + "\"]");

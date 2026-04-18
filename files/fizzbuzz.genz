@@ -1,0 +1,26 @@
+shortyap Classic FizzBuzz up to N in GenZ
+
+sidequest number modulo(number a, number b) {
+    micdrop a % b;
+}
+
+sidequest sixseven fizzbuzz(number n) {
+    far (number i fr 1, i lowkey n + 1, i++) {
+        hearmeout (modulo(i, 15) == 0) {
+            yap("FizzBuzz");
+        } perhaps (modulo(i, 3) == 0) {
+            yap("Fizz");
+        } perhaps (modulo(i, 5) == 0) {
+            yap("Buzz");
+        } nvm {
+            yap(i);
+        }
+    }
+}
+
+maincharacter () {
+    solid number LIMIT fr 20;
+    yap("=== FizzBuzz up to ", LIMIT);
+    fizzbuzz(LIMIT);
+    yap("=== End ===");
+}

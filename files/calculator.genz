@@ -1,0 +1,63 @@
+shortyap Calculator with several operations and a switch-based menu
+
+sidequest number addition(number a, number b) {
+    micdrop a + b;
+}
+
+sidequest number subtraction(number a, number b) {
+    micdrop a - b;
+}
+
+sidequest number product(number a, number b) {
+    micdrop a * b;
+}
+
+sidequest real division(real a, real b) {
+    hearmeout (b == 0) {
+        yap("Error: division by zero");
+        micdrop 0.0;
+    }
+    micdrop a / b;
+}
+
+sidequest sixseven menu(number op, number a, number b) {
+    consider (op) {
+        checkmeout 1:
+            yap("Addition = ", addition(a, b));
+            ragequit;
+        checkmeout 2:
+            yap("Subtraction = ", subtraction(a, b));
+            ragequit;
+        checkmeout 3:
+            yap("Product = ", product(a, b));
+            ragequit;
+        idc:
+            yap("Unsupported operation");
+            ragequit;
+    }
+}
+
+maincharacter () {
+    number x fr 12;
+    number y fr 4;
+    number op fr 1;
+
+    yap("=== Calculator ===");
+
+    takeas (op lowkey 4) {
+        menu(op, x, y);
+        op++;
+    }
+
+    real ra fr 7.5;
+    real rb fr 2.5;
+    yap("Real division = ", division(ra, rb));
+
+    number i fr 0;
+    post_once {
+        yap("Do-while iteration ", i);
+        i fr i + 1;
+    } keep_it_going (i lowkey 3);
+
+    yap("=== End ===");
+}

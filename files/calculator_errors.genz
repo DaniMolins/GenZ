@@ -1,0 +1,80 @@
+shortyap ============================================================
+shortyap INTENTIONAL ERRORS IN THIS FILE:
+shortyap   1. LEXER  - unclosed string literal in the "Real division" yap
+shortyap   2. PARSER - missing semicolon after "number x fr 12"
+shortyap   3. PARSER - missing closing parenthesis in menu(op, x, y
+shortyap   4. SEMANTIC - duplicate declaration of "addition"
+shortyap   5. SEMANTIC - assignment to constant "LIMIT"
+shortyap   6. SEMANTIC - undeclared variable "z" used in product call
+shortyap   7. SEMANTIC - type mismatch: assigning a string to a number
+shortyap   8. SEMANTIC - wrong number of arguments in addition(x)
+shortyap   9. SEMANTIC - non-boolean condition in hearmeout (x + 1)
+shortyap  10. SEMANTIC - break (ragequit) used outside of a loop/switch
+shortyap ============================================================
+
+solid number LIMIT fr 100;
+
+sidequest number addition(number a, number b) {
+    micdrop a + b;
+}
+
+shortyap Error 4: duplicate function declaration
+sidequest number addition(number a, number b) {
+    micdrop a - b;
+}
+
+sidequest number subtraction(number a, number b) {
+    micdrop a - b;
+}
+
+sidequest number product(number a, number b) {
+    micdrop a * b;
+}
+
+maincharacter () {
+    yap("=== Calculator with errors ===");
+
+    shortyap Error 2: missing semicolon after the next statement
+    number x fr 12
+    number y fr 4;
+    number op fr 1;
+
+    shortyap Error 5: cannot assign to a constant
+    LIMIT fr 50;
+
+    shortyap Error 7: type mismatch (string into number)
+    number bad fr "not a number";
+
+    shortyap Error 8: wrong number of arguments
+    number r1 fr addition(x);
+
+    shortyap Error 6: undeclared identifier "z"
+    number r2 fr product(x, z);
+
+    shortyap Error 9: condition is not boolean
+    hearmeout (x + 1) {
+        yap("never reaches here");
+    }
+
+    shortyap Error 10: ragequit outside loop/switch
+    ragequit;
+
+    shortyap Error 3: missing closing parenthesis in the call below
+    menu(op, x, y;
+
+    shortyap Error 1: unclosed string literal
+    yap("Real division = );
+
+    yap("=== End ===");
+}
+
+sidequest sixseven menu(number op, number a, number b) {
+    consider (op) {
+        checkmeout 1:
+            yap("Addition = ", addition(a, b));
+            ragequit;
+        idc:
+            yap("Unsupported operation");
+            ragequit;
+    }
+}
