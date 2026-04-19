@@ -9,9 +9,10 @@ import java.util.List;
  */
 public class Main {
     public static void main(String[] args) throws IOException {
-        String source = new String(Files.readAllBytes(Paths.get("files/calculator_errors.genz")));
+        String path = args.length > 0 ? args[0] : "files/calculator_errors.genz";
+        String source = new String(Files.readAllBytes(Paths.get(path)));
 
-        ErrorHandler errorHandler = new ErrorHandler(source, Lexer.getKeywords());
+        ErrorHandler errorHandler = new ErrorHandler(source, Lexer.getKeywords(), 100);
 
         Lexer lexer = new Lexer(source, errorHandler);
         List<Token> tokens = lexer.tokenize();

@@ -911,7 +911,7 @@ public class Semantic {
     }
 
     private SymbolTable.Type checkCall(Token functionNameToken, TreeNode argumentsOptionalNode) {
-        Symbol functionSymbol = symbols.lookupGlobal(functionNameToken.value);
+        Symbol functionSymbol = symbols.lookup(functionNameToken.value);
         if (functionSymbol == null) {
             undeclared(functionNameToken);
             return SymbolTable.Type.ERROR;
