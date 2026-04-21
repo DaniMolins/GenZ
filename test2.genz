@@ -1,5 +1,5 @@
 maincharacter () {
-    number x fr 42;
+    number x fr;
     muchotexto msg fr "hello";
     muchotexto c fr "ab";
     number y fr 10;

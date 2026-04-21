@@ -91,6 +91,8 @@ STATEMENTS
 <open_statement> ::= CONST <base_type> ID ASSIGN <expression> SEMICOLON
                    | <type_specifier_no_const> <decl_or_expr_tail>
                    | ID <id_led_tail>
+                   | PLUS PLUS ID SEMICOLON
+                   | MINUS MINUS ID SEMICOLON
                    | <literal> SEMICOLON
                    | LPAREN <expression> RPAREN SEMICOLON
 

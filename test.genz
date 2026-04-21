@@ -1,8 +1,5 @@
-shortyap Error test file - these should produce lexer errors
+shortyap This is the classic Hello World program in GenZ
 
-maincharacter () {
-    number x fr 42;
-    muchotexto msg fr "hello;
-    letter c fr 'ab';
-    number y fr @;
+maincharacter() {
+    yap("Hello, World!");
 }
