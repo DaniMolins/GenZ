@@ -1,9 +1,8 @@
 import compiler.error.*;
 import java.util.*;
 
-public class Semantic {
+public class Semantic implements SemanticListener {
 
-    private final ParseTree   parseTree;
     private final ErrorHandler errors;
     private final SymbolTable  symbols;
 
@@ -11,10 +10,29 @@ public class Semantic {
     private int loopDepth   = 0;
     private int switchDepth = 0;
 
-    public Semantic(ParseTree parseTree, ErrorHandler errors) {
-        this.parseTree = parseTree;
-        this.errors    = errors;
-        this.symbols   = new SymbolTable();
+    private final List<PendingFunctionBody> pendingFunctions = new ArrayList<>();
+    private PendingFunctionBody currentPendingFunction = null;
+    private PendingMainBody pendingMain = null;
+    private PendingMainBody currentPendingMain = null;
+
+    private static class PendingFunctionBody {
+        final TreeNode signatureNode;
+        final Symbol   functionSymbol;
+        final List<TreeNode> statements = new ArrayList<>();
+
+        PendingFunctionBody(TreeNode signatureNode, Symbol functionSymbol) {
+            this.signatureNode  = signatureNode;
+            this.functionSymbol = functionSymbol;
+        }
+    }
+
+    private static class PendingMainBody {
+        final List<TreeNode> statements = new ArrayList<>();
+    }
+
+    public Semantic(ErrorHandler errors) {
+        this.errors  = errors;
+        this.symbols = new SymbolTable();
     }
 
     public boolean hasErrors() {
@@ -25,59 +43,127 @@ public class Semantic {
         return symbols;
     }
 
-    public void analyze() {
-        TreeNode rootNode = parseTree.getRoot();
-        if (rootNode == null || !"program".equals(rootNode.label)) {
-            return;
-        }
 
-        TreeNode declarationListNode = childByLabel(rootNode, "declaration_list");
-        TreeNode mainFunctionNode    = childByLabel(rootNode, "main_function");
+    @Override
+    public void onInject(TreeNode injectNode) {
+    }
 
-        if (declarationListNode != null) {
-            collectGlobalDeclarations(declarationListNode);
-        }
+    @Override
+    public void onStruct(TreeNode structNode) {
+        collectStruct(structNode);
+    }
 
-        if (declarationListNode != null) {
-            analyzeDeclarations(declarationListNode);
-        }
-        if (mainFunctionNode != null) {
-            analyzeMainFunction(mainFunctionNode);
+    @Override
+    public void onEnum(TreeNode enumNode) {
+        collectEnum(enumNode);
+    }
+
+    @Override
+    public void onFunctionSignature(TreeNode signatureNode) {
+        Symbol functionSymbol = collectFunction(signatureNode);
+        currentPendingFunction = new PendingFunctionBody(signatureNode, functionSymbol);
+        pendingFunctions.add(currentPendingFunction);
+    }
+
+    @Override
+    public void onFunctionBodyStatement(TreeNode statementNode) {
+        if (currentPendingFunction != null) {
+            currentPendingFunction.statements.add(statementNode);
         }
     }
 
-    private void collectGlobalDeclarations(TreeNode declarationListNode) {
-        for (TreeNode declarationNode : declarationListNode.children) {
-            if (!"declaration".equals(declarationNode.label) || declarationNode.children.isEmpty()) {
+    @Override
+    public void onFunctionEnd() {
+        currentPendingFunction = null;
+    }
+
+    @Override
+    public void onMainBegin(TreeNode mainHeaderNode) {
+        currentPendingMain = new PendingMainBody();
+        pendingMain = currentPendingMain;
+    }
+
+    @Override
+    public void onMainStatement(TreeNode statementNode) {
+        if (currentPendingMain != null) {
+            currentPendingMain.statements.add(statementNode);
+        }
+    }
+
+    @Override
+    public void onMainEnd() {
+        currentPendingMain = null;
+    }
+
+    @Override
+    public void onProgramEnd() {
+        for (PendingFunctionBody pendingBody : pendingFunctions) {
+            analyzePendingFunctionBody(pendingBody);
+        }
+        if (pendingMain != null) {
+            analyzePendingMainBody(pendingMain);
+        }
+    }
+
+    private void analyzePendingFunctionBody(PendingFunctionBody pendingBody) {
+        Symbol previousFunction = currentFunction;
+        currentFunction = pendingBody.functionSymbol;
+        symbols.enterScope();
+
+        registerParametersFromSignature(pendingBody.signatureNode);
+
+        for (TreeNode statementNode : pendingBody.statements) {
+            analyzeStatement(statementNode);
+        }
+
+        symbols.exitScope();
+        currentFunction = previousFunction;
+    }
+
+    private void analyzePendingMainBody(PendingMainBody pendingBody) {
+        symbols.enterScope();
+        for (TreeNode statementNode : pendingBody.statements) {
+            analyzeStatement(statementNode);
+        }
+        symbols.exitScope();
+    }
+
+    private void registerParametersFromSignature(TreeNode signatureNode) {
+        TreeNode parameterListOptionalNode = childByLabel(signatureNode, "param_list_opt");
+        if (parameterListOptionalNode == null) {
+            return;
+        }
+        TreeNode parameterListNode = childByLabel(parameterListOptionalNode, "param_list");
+        if (parameterListNode == null) {
+            return;
+        }
+        for (TreeNode parameterNode : parameterListNode.children) {
+            if (!"param".equals(parameterNode.label)) {
                 continue;
             }
-            TreeNode declarationChild = declarationNode.children.get(0);
-            switch (declarationChild.label) {
-                case "function_declaration":
-                    collectFunction(declarationChild);
-                    break;
-                case "struct_declaration":
-                    collectStruct(declarationChild);
-                    break;
-                case "enum_declaration":
-                    collectEnum(declarationChild);
-                    break;
-                default:
-                    break;
+            SymbolTable.Type parameterType = resolveTypeSpecifier(childByLabel(parameterNode, "type_specifier"));
+            Token parameterNameToken = firstTokenOfType(parameterNode, TokenType.ID);
+            if (parameterNameToken == null) {
+                continue;
+            }
+            Symbol parameterSymbol = new Symbol(parameterNameToken.value, Symbol.Kind.PARAMETER, parameterType, parameterNameToken.line);
+            parameterSymbol.initialized = true;
+            if (symbols.insert(parameterSymbol) != null) {
+                duplicate(parameterNameToken, "parameter");
             }
         }
     }
 
-    private void collectFunction(TreeNode functionNode) {
-        SymbolTable.Type returnType = resolveTypeSpecifier(childByLabel(functionNode, "type_specifier"));
-        Token nameToken = firstTokenOfType(functionNode, TokenType.ID);
+    private Symbol collectFunction(TreeNode signatureNode) {
+        SymbolTable.Type returnType = resolveTypeSpecifier(childByLabel(signatureNode, "type_specifier"));
+        Token nameToken = firstTokenOfType(signatureNode, TokenType.ID);
         if (nameToken == null) {
-            return;
+            return null;
         }
 
         Symbol functionSymbol = new Symbol(nameToken.value, Symbol.Kind.FUNCTION, returnType, nameToken.line);
 
-        TreeNode parameterListOptionalNode = childByLabel(functionNode, "param_list_opt");
+        TreeNode parameterListOptionalNode = childByLabel(signatureNode, "param_list_opt");
         if (parameterListOptionalNode != null) {
             TreeNode parameterListNode = childByLabel(parameterListOptionalNode, "param_list");
             if (parameterListNode != null) {
@@ -94,7 +180,9 @@ public class Semantic {
         Symbol existingSymbol = symbols.insert(functionSymbol);
         if (existingSymbol != null) {
             duplicate(nameToken, "function");
+            return existingSymbol;
         }
+        return functionSymbol;
     }
 
     private void collectStruct(TreeNode structNode) {
@@ -150,62 +238,6 @@ public class Semantic {
         }
         if (symbols.insert(enumSymbol) != null) {
             duplicate(enumNameToken, "enum");
-        }
-    }
-
-    private void analyzeDeclarations(TreeNode declarationListNode) {
-        for (TreeNode declarationNode : declarationListNode.children) {
-            if (!"declaration".equals(declarationNode.label) || declarationNode.children.isEmpty()) {
-                continue;
-            }
-            TreeNode declarationChild = declarationNode.children.get(0);
-            if ("function_declaration".equals(declarationChild.label)) {
-                analyzeFunction(declarationChild);
-            }
-        }
-    }
-
-    private void analyzeFunction(TreeNode functionNode) {
-        Token nameToken = firstTokenOfType(functionNode, TokenType.ID);
-        Symbol functionSymbol = nameToken == null ? null : symbols.lookupGlobal(nameToken.value);
-
-        Symbol previousFunction = currentFunction;
-        currentFunction = functionSymbol;
-        symbols.enterScope();
-
-        TreeNode parameterListOptionalNode = childByLabel(functionNode, "param_list_opt");
-        if (parameterListOptionalNode != null) {
-            TreeNode parameterListNode = childByLabel(parameterListOptionalNode, "param_list");
-            if (parameterListNode != null) {
-                for (TreeNode parameterNode : parameterListNode.children) {
-                    if ("param".equals(parameterNode.label)) {
-                        SymbolTable.Type parameterType = resolveTypeSpecifier(childByLabel(parameterNode, "type_specifier"));
-                        Token parameterNameToken = firstTokenOfType(parameterNode, TokenType.ID);
-                        if (parameterNameToken != null) {
-                            Symbol parameterSymbol = new Symbol(parameterNameToken.value, Symbol.Kind.PARAMETER, parameterType, parameterNameToken.line);
-                            parameterSymbol.initialized = true;
-                            if (symbols.insert(parameterSymbol) != null) {
-                                duplicate(parameterNameToken, "parameter");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        TreeNode bodyBlock = childByLabel(functionNode, "block");
-        if (bodyBlock != null) {
-            analyzeBlock(bodyBlock, false);
-        }
-
-        symbols.exitScope();
-        currentFunction = previousFunction;
-    }
-
-    private void analyzeMainFunction(TreeNode mainNode) {
-        TreeNode bodyBlock = childByLabel(mainNode, "block");
-        if (bodyBlock != null) {
-            analyzeBlock(bodyBlock, true);
         }
     }
 

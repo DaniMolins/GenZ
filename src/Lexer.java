@@ -1,14 +1,12 @@
 import compiler.error.*;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 
-/**
- * Lexical analyzer for GenZ language.
- * Features: tokenization, comment handling, spell checking for keywords.
- */
 public class Lexer {
 
     private final String source;
@@ -16,51 +14,57 @@ public class Lexer {
     private int line;
     private int column;
     private int lineStart;
-    private final List<Token> tokens;
+
+    /** Tokens already produced by the state machine but not yet handed out. */
+    private final Queue<Token> pending = new ArrayDeque<>();
+    /** Tokens already handed out via peek() but not yet consumed via next(). */
+    private final List<Token> lookahead = new ArrayList<>();
+    private boolean eofEmitted = false;
+
     private final ErrorHandler errorHandler;
 
     private static final Map<String, TokenType> KEYWORDS = new HashMap<>();
 
     static {
-        KEYWORDS.put("number",        TokenType.NUMBER);
-        KEYWORDS.put("real",          TokenType.REAL);
-        KEYWORDS.put("muchotexto",    TokenType.MUCHOTEXTO);
-        KEYWORDS.put("maybe",         TokenType.MAYBE);
-        KEYWORDS.put("letter",        TokenType.LETTER);
-        KEYWORDS.put("sixseven",      TokenType.SIXSEVEN);
-        KEYWORDS.put("solid",         TokenType.CONST);
-        KEYWORDS.put("catalog",       TokenType.CATALOG);
-        KEYWORDS.put("nocap",         TokenType.TRUE);
-        KEYWORDS.put("cap",           TokenType.FALSE);
-        KEYWORDS.put("hearmeout",     TokenType.HEARMEOUT);
-        KEYWORDS.put("nvm",           TokenType.NVM);
-        KEYWORDS.put("perhaps",       TokenType.PERHAPS);
-        KEYWORDS.put("consider",      TokenType.CONSIDER);
-        KEYWORDS.put("checkmeout",    TokenType.CHECKMEOUT);
-        KEYWORDS.put("idc",           TokenType.IDC);
-        KEYWORDS.put("far",           TokenType.FAR);
-        KEYWORDS.put("takeas",        TokenType.TAKEAS);
-        KEYWORDS.put("post_once",     TokenType.POST_ONCE);
-        KEYWORDS.put("keep_it_going", TokenType.KEEP_IT_GOING);
-        KEYWORDS.put("ragequit",      TokenType.RAGEQUIT);
-        KEYWORDS.put("sayless",       TokenType.SAYLESS);
-        KEYWORDS.put("sidequest",     TokenType.SIDEQUEST);
-        KEYWORDS.put("micdrop",       TokenType.MICDROP);
-        KEYWORDS.put("maincharacter", TokenType.MAINCHARACTER);
-        KEYWORDS.put("yap",           TokenType.YAP);
+        KEYWORDS.put("number",TokenType.NUMBER);
+        KEYWORDS.put("real",TokenType.REAL);
+        KEYWORDS.put("muchotexto",TokenType.MUCHOTEXTO);
+        KEYWORDS.put("maybe",TokenType.MAYBE);
+        KEYWORDS.put("letter",TokenType.LETTER);
+        KEYWORDS.put("sixseven",TokenType.SIXSEVEN);
+        KEYWORDS.put("solid",TokenType.CONST);
+        KEYWORDS.put("catalog",TokenType.CATALOG);
+        KEYWORDS.put("nocap",TokenType.TRUE);
+        KEYWORDS.put("cap",TokenType.FALSE);
+        KEYWORDS.put("hearmeout",TokenType.HEARMEOUT);
+        KEYWORDS.put("nvm",TokenType.NVM);
+        KEYWORDS.put("perhaps",TokenType.PERHAPS);
+        KEYWORDS.put("consider",TokenType.CONSIDER);
+        KEYWORDS.put("checkmeout",TokenType.CHECKMEOUT);
+        KEYWORDS.put("idc",TokenType.IDC);
+        KEYWORDS.put("far",TokenType.FAR);
+        KEYWORDS.put("takeas",TokenType.TAKEAS);
+        KEYWORDS.put("post_once",TokenType.POST_ONCE);
+        KEYWORDS.put("keep_it_going",TokenType.KEEP_IT_GOING);
+        KEYWORDS.put("ragequit",TokenType.RAGEQUIT);
+        KEYWORDS.put("sayless",TokenType.SAYLESS);
+        KEYWORDS.put("sidequest",TokenType.SIDEQUEST);
+        KEYWORDS.put("micdrop",TokenType.MICDROP);
+        KEYWORDS.put("maincharacter",TokenType.MAINCHARACTER);
+        KEYWORDS.put("yap",TokenType.YAP);
         KEYWORDS.put("listenclosely", TokenType.LISTENCLOSELY);
-        KEYWORDS.put("fr",            TokenType.ASSIGN);
-        KEYWORDS.put("notfr",         TokenType.NOTEQUAL);
-        KEYWORDS.put("highkey",       TokenType.GREATER);
-        KEYWORDS.put("lowkey",        TokenType.LESS);
-        KEYWORDS.put("same",          TokenType.AND);
-        KEYWORDS.put("or",            TokenType.OR);
-        KEYWORDS.put("nahfam",        TokenType.NOT);
-        KEYWORDS.put("inject",        TokenType.INJECT);
-        KEYWORDS.put("outfit",        TokenType.OUTFIT);
-        KEYWORDS.put("picks",         TokenType.PICKS);
-        KEYWORDS.put("shortyap",      TokenType.SHORTYAP);
-        KEYWORDS.put("longyap",       TokenType.LONGYAP);
+        KEYWORDS.put("fr",TokenType.ASSIGN);
+        KEYWORDS.put("notfr",TokenType.NOTEQUAL);
+        KEYWORDS.put("highkey",TokenType.GREATER);
+        KEYWORDS.put("lowkey",TokenType.LESS);
+        KEYWORDS.put("same",TokenType.AND);
+        KEYWORDS.put("or",TokenType.OR);
+        KEYWORDS.put("nahfam",TokenType.NOT);
+        KEYWORDS.put("inject",TokenType.INJECT);
+        KEYWORDS.put("outfit",TokenType.OUTFIT);
+        KEYWORDS.put("picks",TokenType.PICKS);
+        KEYWORDS.put("shortyap",TokenType.SHORTYAP);
+        KEYWORDS.put("longyap",TokenType.LONGYAP);
     }
 
     public static Set<String> getKeywords() {
@@ -73,7 +77,6 @@ public class Lexer {
         this.line = 1;
         this.column = 1;
         this.lineStart = 0;
-        this.tokens = new ArrayList<>();
         this.errorHandler = errorHandler;
     }
 
@@ -81,7 +84,7 @@ public class Lexer {
         return pos < source.length() ? source.charAt(pos) : '\0';
     }
 
-    private char peek() {
+    private char peekChar() {
         return (pos + 1) < source.length() ? source.charAt(pos + 1) : '\0';
     }
 
@@ -101,13 +104,39 @@ public class Lexer {
         return pos - lineStart + 1;
     }
 
-    public List<Token> tokenize() {
-        while (pos < source.length()) {
+    // ═══════════════════════════════════════════════════════════════
+    // STREAM API: the Parser pulls tokens one by one through this.
+    // ═══════════════════════════════════════════════════════════════
+
+    /** Returns the next token without consuming it. */
+    public Token peek() {
+        return peek(0);
+    }
+
+    public Token peek(int lookaheadIndex) {
+        while (lookahead.size() <= lookaheadIndex) {
+            lookahead.add(produceNextToken());
+        }
+        return lookahead.get(lookaheadIndex);
+    }
+
+    public Token next() {
+        if (!lookahead.isEmpty()) {
+            return lookahead.remove(0);
+        }
+        return produceNextToken();
+    }
+
+    private Token produceNextToken() {
+        while (pending.isEmpty()) {
             skipWhitespace();
-            if (pos >= source.length()) break;
-
+            if (pos >= source.length()) {
+                if (!eofEmitted) {
+                    eofEmitted = true;
+                }
+                return new Token(TokenType.EOF, "", line);
+            }
             char c = current();
-
             if (Character.isLetter(c) || c == '_') {
                 readWord();
             } else if (Character.isDigit(c)) {
@@ -120,9 +149,19 @@ public class Lexer {
                 readSymbol();
             }
         }
-        tokens.add(new Token(TokenType.EOF, "", line));
-        return tokens;
+        return pending.poll();
     }
+
+    public List<Token> tokenize() {
+        List<Token> all = new ArrayList<>();
+        Token token;
+        do {
+            token = next();
+            all.add(token);
+        } while (token.type != TokenType.EOF);
+        return all;
+    }
+
 
     private void skipWhitespace() {
         while (pos < source.length() && Character.isWhitespace(current())) {
@@ -142,7 +181,6 @@ public class Lexer {
         String word = source.substring(start, pos);
         TokenType type = KEYWORDS.getOrDefault(word, TokenType.ID);
 
-        // Handle comments
         if (type == TokenType.SHORTYAP) {
             skipToEndOfLine();
             return;
@@ -152,17 +190,15 @@ public class Lexer {
             return;
         }
 
-        // Check for typos in keywords (only for identifiers)
         if (type == TokenType.ID) {
             String suggestion = errorHandler.findSimilarKeyword(word);
             if (suggestion != null) {
-                // Store suggestion in token for parser to use
-                tokens.add(new Token(TokenType.ID, word, line, suggestion));
+                pending.add(new Token(TokenType.ID, word, line, suggestion));
                 return;
             }
         }
 
-        tokens.add(new Token(type, word, line));
+        pending.add(new Token(type, word, line));
     }
 
     private void skipToEndOfLine() {
@@ -207,12 +243,12 @@ public class Lexer {
         int start = pos;
         while (pos < source.length() && Character.isDigit(current())) advance();
 
-        if (current() == '.' && Character.isDigit(peek())) {
+        if (current() == '.' && Character.isDigit(peekChar())) {
             advance();
             while (pos < source.length() && Character.isDigit(current())) advance();
-            tokens.add(new Token(TokenType.FLOAT_LITERAL, source.substring(start, pos), line));
+            pending.add(new Token(TokenType.FLOAT_LITERAL, source.substring(start, pos), line));
         } else {
-            tokens.add(new Token(TokenType.INT_LITERAL, source.substring(start, pos), line));
+            pending.add(new Token(TokenType.INT_LITERAL, source.substring(start, pos), line));
         }
     }
 
@@ -233,13 +269,13 @@ public class Lexer {
                     startLine,
                     startCol
             );
-            tokens.add(new Token(TokenType.UNKNOWN, source.substring(start, pos), startLine));
+            pending.add(new Token(TokenType.UNKNOWN, source.substring(start, pos), startLine));
             return;
         }
 
         String value = source.substring(start, pos);
         advance();
-        tokens.add(new Token(TokenType.STRING_LITERAL, value, startLine));
+        pending.add(new Token(TokenType.STRING_LITERAL, value, startLine));
     }
 
     private void readChar() {
@@ -273,12 +309,12 @@ public class Lexer {
                     "Use muchotexto (string) for \"" + extraChars + "\" instead."
             );
             if (check('\'')) advance();
-            tokens.add(new Token(TokenType.UNKNOWN, extraChars.toString(), startLine));
+            pending.add(new Token(TokenType.UNKNOWN, extraChars.toString(), startLine));
             return;
         }
 
         advance();
-        tokens.add(new Token(TokenType.CHAR_LITERAL, String.valueOf(value), startLine));
+        pending.add(new Token(TokenType.CHAR_LITERAL, String.valueOf(value), startLine));
     }
 
     private boolean check(char c) {
@@ -289,39 +325,39 @@ public class Lexer {
         char c = advance();
         switch (c) {
             case '+':
-                if (current() == '+') { advance(); tokens.add(new Token(TokenType.PLUS,  "++", line)); }
-                else tokens.add(new Token(TokenType.PLUS,  "+", line));
+                if (current() == '+') { advance(); pending.add(new Token(TokenType.PLUS,  "++", line)); }
+                else pending.add(new Token(TokenType.PLUS,  "+", line));
                 break;
             case '-':
-                if (current() == '-') { advance(); tokens.add(new Token(TokenType.MINUS, "--", line)); }
-                else tokens.add(new Token(TokenType.MINUS, "-", line));
+                if (current() == '-') { advance(); pending.add(new Token(TokenType.MINUS, "--", line)); }
+                else pending.add(new Token(TokenType.MINUS, "-", line));
                 break;
-            case '*': tokens.add(new Token(TokenType.STAR,      "*",  line)); break;
-            case '/': tokens.add(new Token(TokenType.SLASH,     "/",  line)); break;
-            case '%': tokens.add(new Token(TokenType.MOD,       "%",  line)); break;
-            case '(': tokens.add(new Token(TokenType.LPAREN,    "(",  line)); break;
-            case ')': tokens.add(new Token(TokenType.RPAREN,    ")",  line)); break;
-            case '{': tokens.add(new Token(TokenType.LBRACE,    "{",  line)); break;
-            case '}': tokens.add(new Token(TokenType.RBRACE,    "}",  line)); break;
-            case '[': tokens.add(new Token(TokenType.LBRACKET,  "[",  line)); break;
-            case ']': tokens.add(new Token(TokenType.RBRACKET,  "]",  line)); break;
-            case ';': tokens.add(new Token(TokenType.SEMICOLON, ";",  line)); break;
-            case ',': tokens.add(new Token(TokenType.COMMA,     ",",  line)); break;
-            case ':': tokens.add(new Token(TokenType.COLON,     ":",  line)); break;
-            case '.': tokens.add(new Token(TokenType.DOT,       ".",  line)); break;
-            case '|': tokens.add(new Token(TokenType.PIPE,      "|",  line)); break;
-            case '&': tokens.add(new Token(TokenType.AMPERSAND, "&",  line)); break;
+            case '*': pending.add(new Token(TokenType.STAR,"*",  line)); break;
+            case '/': pending.add(new Token(TokenType.SLASH,"/",  line)); break;
+            case '%': pending.add(new Token(TokenType.MOD,"%",  line)); break;
+            case '(': pending.add(new Token(TokenType.LPAREN,"(",  line)); break;
+            case ')': pending.add(new Token(TokenType.RPAREN,")",  line)); break;
+            case '{': pending.add(new Token(TokenType.LBRACE,"{",  line)); break;
+            case '}': pending.add(new Token(TokenType.RBRACE,"}",  line)); break;
+            case '[': pending.add(new Token(TokenType.LBRACKET,"[",  line)); break;
+            case ']': pending.add(new Token(TokenType.RBRACKET,"]",  line)); break;
+            case ';': pending.add(new Token(TokenType.SEMICOLON,";",  line)); break;
+            case ',': pending.add(new Token(TokenType.COMMA,",",  line)); break;
+            case ':': pending.add(new Token(TokenType.COLON,":",  line)); break;
+            case '.': pending.add(new Token(TokenType.DOT,".",  line)); break;
+            case '|': pending.add(new Token(TokenType.PIPE,"|",  line)); break;
+            case '&': pending.add(new Token(TokenType.AMPERSAND, "&",  line)); break;
             case '<':
-                if (current() == '=') { advance(); tokens.add(new Token(TokenType.LESSEQUAL,    "<=", line)); }
-                else tokens.add(new Token(TokenType.LANGLE, "<", line));
+                if (current() == '=') { advance(); pending.add(new Token(TokenType.LESSEQUAL,    "<=", line)); }
+                else pending.add(new Token(TokenType.LANGLE, "<", line));
                 break;
             case '>':
-                if (current() == '=') { advance(); tokens.add(new Token(TokenType.GREATEREQUAL, ">=", line)); }
-                else tokens.add(new Token(TokenType.RANGLE, ">", line));
+                if (current() == '=') { advance(); pending.add(new Token(TokenType.GREATEREQUAL, ">=", line)); }
+                else pending.add(new Token(TokenType.RANGLE, ">", line));
                 break;
             case '=':
-                if (current() == '=') { advance(); tokens.add(new Token(TokenType.EQUALEQUAL,   "==", line)); }
-                else tokens.add(new Token(TokenType.UNKNOWN, "=", line));
+                if (current() == '=') { advance(); pending.add(new Token(TokenType.EQUALEQUAL,   "==", line)); }
+                else pending.add(new Token(TokenType.UNKNOWN, "=", line));
                 break;
             default:
                 errorHandler.error(
@@ -330,7 +366,7 @@ public class Lexer {
                         line,
                         currentColumn() - 1
                 );
-                tokens.add(new Token(TokenType.UNKNOWN, String.valueOf(c), line));
+                pending.add(new Token(TokenType.UNKNOWN, String.valueOf(c), line));
         }
     }
 
