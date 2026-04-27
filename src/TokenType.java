@@ -1,6 +1,6 @@
 public enum TokenType {
     // Types
-    NUMBER, REAL, MUCHOTEXTO, MAYBE, LETTER, SIXSEVEN, CONST, CATALOG,
+    NUMBER, REAL, MUCHOTEXTO, MAYBE, LETTER, CONST, CATALOG,
     // Booleans
     TRUE, FALSE,
     // Control Flow

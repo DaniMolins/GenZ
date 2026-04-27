@@ -4,9 +4,7 @@ GenZ Grammar
 
 <program> ::= <declaration_list> <main_function>
 
-<declaration_list>  ::= <declaration> <declaration_list'>
-
-<declaration_list'> ::= <declaration> <declaration_list'> | ε
+<declaration_list>  ::= <declaration> <declaration_list> | ε
 
 <declaration> ::= <import_statement>
                 | <struct_declaration>
@@ -20,7 +18,7 @@ IMPORT
 <import_statement> ::= INJECT STRING_LITERAL SEMICOLON
 
 ---------
-STRUCTS & ENUMS
+STRUCTS
 ---------
 
 <struct_declaration> ::= OUTFIT ID LBRACE <struct_body> RBRACE SEMICOLON
@@ -28,6 +26,10 @@ STRUCTS & ENUMS
 <struct_body> ::= <variable_declaration> <struct_body'>
 
 <struct_body'> ::= <variable_declaration> <struct_body'> | ε
+
+---------
+ENUMS
+---------
 
 <enum_declaration> ::= PICKS ID LBRACE <enum_body> RBRACE SEMICOLON
 
@@ -59,13 +61,15 @@ TYPES
                    | CATALOG LANGLE <base_type> RANGLE
                    | <base_type>
 
-<base_type> ::= NUMBER | REAL | MUCHOTEXTO | MAYBE | LETTER | SIXSEVEN
+<base_type> ::= NUMBER | REAL | MUCHOTEXTO | MAYBE | LETTER
 
 ---------
 BLOCK
 ---------
 
-<block> ::= LBRACE <statement_list> RBRACE | LBRACE RBRACE
+<block> ::= LBRACE <block_body> RBRACE
+
+<block_body> ::= <statement_list> | ε
 
 ---------
 STATEMENTS
@@ -80,27 +84,25 @@ STATEMENTS
               | <for_statement>
               | <while_statement>
               | <do_while_statement>
-              | <break_statement>
               | <continue_statement>
               | <return_statement>
               | <print_statement>
               | <input_statement>
               | <block>
-              | <open_statement>
+              | <declaration_statement>
+              | <expression_statement>
 
-<open_statement> ::= CONST <base_type> ID ASSIGN <expression> SEMICOLON
-                   | <type_specifier_no_const> <decl_or_expr_tail>
-                   | ID <id_led_tail>
-                   | PLUS PLUS ID SEMICOLON
-                   | MINUS MINUS ID SEMICOLON
-                   | <literal> SEMICOLON
-                   | LPAREN <expression> RPAREN SEMICOLON
+<declaration_statement> ::= CONST <base_type> ID ASSIGN <expression> SEMICOLON
+                          | <type_specifier_no_const> ID <decl_or_expr_tail>
 
 <type_specifier_no_const> ::= CATALOG LANGLE <base_type> RANGLE
                             | <base_type>
 
-<decl_or_expr_tail> ::= ID ASSIGN <expression> SEMICOLON
+<decl_or_expr_tail> ::= ASSIGN <expression> SEMICOLON
                       | SEMICOLON
+
+<expression_statement> ::= ID <id_led_tail>
+                         | LPAREN <expression> RPAREN SEMICOLON
 
 <id_led_tail> ::= ASSIGN <expression> SEMICOLON
                 | LPAREN <argument_list_opt> RPAREN SEMICOLON
@@ -113,55 +115,57 @@ STATEMENTS
 <id_led_tail'> ::= ASSIGN <expression> SEMICOLON
                  | SEMICOLON
 
+
 ---------
-VARIABLE & CONSTANT DECLARATIONS
+VARIABLE DECLARATION
 ---------
 
 <variable_declaration> ::= <type_specifier> ID ASSIGN <expression> SEMICOLON
 
-<constant_declaration> ::= CONST <type_specifier> ID ASSIGN <expression> SEMICOLON
 
 ---------
 CONTROL FLOW — IF / ELSE
 ---------
 
-<if_statement> ::= HEARMEOUT LPAREN <expression> RPAREN <block> <else_clause>
+<if_statement> ::= HEARMEOUT LPAREN <expression> RPAREN <block> <else_if_chain>  <else_final>
 
-<else_clause> ::= NVM <block>
-                | PERHAPS LPAREN <expression> RPAREN <block> <else_clause>
-                | ε
+<else_if_chain> ::= PERHAPS LPAREN <expression> RPAREN <block> <else_if_chain> | ε
+
+<else_final> ::= NVM <block> | ε
 
 ---------
 CONTROL FLOW — SWITCH
 ---------
 
-<switch_statement> ::= CONSIDER LPAREN <expression> RPAREN LBRACE <case_list> RBRACE
+<switch_statement> ::= CONSIDER LPAREN <expression> RPAREN LBRACE <switch_body> RBRACE
 
-<case_list>  ::= <case_clause> <case_list'>
+<switch_body> ::= <switch_item> <switch_item_list>
 
-<case_list'> ::= <case_clause> <case_list'> | ε
+<switch_item_list> ::= <switch_item> <switch_item_list> | ε
 
-<case_clause> ::= CHECKMEOUT <literal> COLON <statement_list> RAGEQUIT SEMICOLON
+<switch_item> ::= <case_clause> | <default_clause>
+
+<case_clause> ::= CHECKMEOUT <literal> COLON <case_body> RAGEQUIT SEMICOLON
+
+<default_clause> ::= IDC COLON <case_body> RAGEQUIT SEMICOLON
+
+<case_body> ::= <statement_list> | ε
 
 ---------
 LOOPS
 ---------
 
-<for_statement> ::= FAR LPAREN <for_init> COMMA <expression> COMMA <for_update> RPAREN <block>
+<for_statement> ::= FAR LPAREN <for_init> SEMICOLON <expression> SEMICOLON <for_update> RPAREN <block>
 
 <for_init> ::= <type_specifier> ID ASSIGN <expression>
              | ID ASSIGN <expression>
              | ε
 
-<for_update> ::= ID ASSIGN <expression>
-               | <expression>
-               | ε
+<for_update> ::= <expression> | ε
 
 <while_statement> ::=  TAKEAS LPAREN <expression> RPAREN <block>
 
 <do_while_statement> ::= POST_ONCE <block> KEEP_IT_GOING LPAREN <expression> RPAREN SEMICOLON
-
-<break_statement>    ::= RAGEQUIT SEMICOLON
 
 <continue_statement> ::= SAYLESS SEMICOLON
 
@@ -169,11 +173,12 @@ LOOPS
 RETURN / PRINT / INPUT
 ---------
 
-<return_statement> ::= MICDROP <expression> SEMICOLON
-                     | MICDROP SEMICOLON
+<return_statement> ::= MICDROP <return_tail>
 
-<print_statement> ::= YAP LPAREN STRING_LITERAL COMMA <argument_list> RPAREN SEMICOLON
-                    | YAP LPAREN <expression> RPAREN SEMICOLON
+<return_tail> ::= <expression> SEMICOLON | SEMICOLON
+
+<print_statement> ::= YAP LPAREN <argument_list_opt> RPAREN SEMICOLON
+                    
 
 <input_statement> ::= LISTENCLOSELY LPAREN ID RPAREN SEMICOLON
 
@@ -228,8 +233,7 @@ UNARY
 
 <unary_expression> ::= NOT   <unary_expression>
                      | MINUS <unary_expression>
-                     | PLUS  PLUS  ID
-                     | MINUS MINUS ID
+                     | PLUS  <unary_expression>
                      | AMPERSAND ID
                      | <postfix_expression>
 
@@ -239,9 +243,7 @@ POSTFIX
 
 <postfix_expression> ::= <primary_expression> <postfix_expression'>
 
-<postfix_expression'> ::= PLUS PLUS  <postfix_expression'>
-                        | MINUS MINUS <postfix_expression'>
-                        | LBRACKET <expression> RBRACKET <postfix_expression'>
+<postfix_expression'> ::= LBRACKET <expression> RBRACKET <postfix_expression'>
                         | LPAREN <argument_list_opt> RPAREN <postfix_expression'>
                         | DOT ID <postfix_expression'>
                         | ε
