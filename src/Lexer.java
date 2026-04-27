@@ -27,7 +27,6 @@ public class Lexer {
         KEYWORDS.put("muchotexto",    TokenType.MUCHOTEXTO);
         KEYWORDS.put("maybe",         TokenType.MAYBE);
         KEYWORDS.put("letter",        TokenType.LETTER);
-        KEYWORDS.put("sixseven",      TokenType.SIXSEVEN);
         KEYWORDS.put("solid",         TokenType.CONST);
         KEYWORDS.put("catalog",       TokenType.CATALOG);
         KEYWORDS.put("nocap",         TokenType.TRUE);

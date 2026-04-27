@@ -37,7 +37,7 @@ public class Parser {
             TokenType.LBRACE, TokenType.RBRACE,
             // Type specifiers (for declarations/expressions)
             TokenType.CONST, TokenType.CATALOG, TokenType.NUMBER, TokenType.REAL,
-            TokenType.MUCHOTEXTO, TokenType.MAYBE, TokenType.LETTER, TokenType.SIXSEVEN,
+            TokenType.MUCHOTEXTO, TokenType.MAYBE, TokenType.LETTER,
             // ID (for assignments, calls)
             TokenType.ID,
             // Unary operators
@@ -72,7 +72,7 @@ public class Parser {
             TokenType.RAGEQUIT, TokenType.SAYLESS, TokenType.YAP, TokenType.LISTENCLOSELY,
             TokenType.LBRACE, TokenType.RBRACE,
             TokenType.CONST, TokenType.CATALOG, TokenType.NUMBER, TokenType.REAL,
-            TokenType.MUCHOTEXTO, TokenType.MAYBE, TokenType.LETTER, TokenType.SIXSEVEN,
+            TokenType.MUCHOTEXTO, TokenType.MAYBE, TokenType.LETTER,
             TokenType.ID, TokenType.PLUS, TokenType.MINUS,
             TokenType.INT_LITERAL, TokenType.FLOAT_LITERAL, TokenType.STRING_LITERAL,
             TokenType.CHAR_LITERAL, TokenType.TRUE, TokenType.FALSE, TokenType.LPAREN
@@ -209,7 +209,7 @@ public class Parser {
     private boolean isTypeSpecifier() {
         switch (currentToken.type) {
             case NUMBER: case REAL: case MUCHOTEXTO:
-            case MAYBE: case LETTER: case SIXSEVEN:
+            case MAYBE: case LETTER:
             case CONST: case CATALOG:
                 return true;
             default: return false;
@@ -219,7 +219,7 @@ public class Parser {
     private boolean isBaseType() {
         switch (currentToken.type) {
             case NUMBER: case REAL: case MUCHOTEXTO:
-            case MAYBE: case LETTER: case SIXSEVEN:
+            case MAYBE: case LETTER:
                 return true;
             default: return false;
         }
@@ -440,14 +440,14 @@ public class Parser {
         TreeNode node = new TreeNode("base_type");
         switch (currentToken.type) {
             case NUMBER: case REAL: case MUCHOTEXTO:
-            case MAYBE: case LETTER: case SIXSEVEN:
+            case MAYBE: case LETTER:
                 node.addChild(new TreeNode(advance()));
                 break;
             default:
                 reportError(
                         CompilerError.Type.UNEXPECTED_TOKEN,
                         "Expected base type but found " + currentToken.type,
-                        "Valid types are: number, real, muchotexto, maybe, letter, sixseven."
+                        "Valid types are: number, real, muchotexto, maybe, letter."
                 );
                 // Insert a placeholder type to allow parsing to continue
                 node.addChild(new TreeNode(new Token(TokenType.NUMBER, "number", currentToken.line)));
@@ -483,20 +483,22 @@ public class Parser {
             case TAKEAS:      node.addChild(parseWhileStatement());    break;
             case POST_ONCE:   node.addChild(parseDoWhileStatement());  break;
             case MICDROP:     node.addChild(parseReturnStatement());   break;
-            case RAGEQUIT:    node.addChild(parseBreakStatement());    break;
             case SAYLESS:     node.addChild(parseContinueStatement()); break;
             case YAP:         node.addChild(parsePrintStatement());    break;
             case LISTENCLOSELY: node.addChild(parseInputStatement());  break;
             case LBRACE:      node.addChild(parseBlock());             break;
             default:
-                node.addChild(parseOpenStatement());
+                if (check(TokenType.CONST) || check(TokenType.CATALOG) || isBaseType()) {
+                    node.addChild(parseDeclarationStatement());
+                } else {
+                    node.addChild(parseExpressionStatement());
+                }
         }
         return node;
     }
 
-    private TreeNode parseOpenStatement() {
-        TreeNode node = new TreeNode("open_statement");
-
+    private TreeNode parseDeclarationStatement() {
+        TreeNode node = new TreeNode("declaration_statement");
         if (check(TokenType.CONST)) {
             node.addChild(new TreeNode(match(TokenType.CONST)));
             node.addChild(parseBaseType());
@@ -504,20 +506,18 @@ public class Parser {
             node.addChild(new TreeNode(match(TokenType.ASSIGN)));
             node.addChild(parseExpression());
             node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
-        } else if (check(TokenType.CATALOG) || isBaseType()) {
+        } else {
             node.addChild(parseTypeSpecifierNoConst());
             node.addChild(parseDeclOrExprTail());
-        } else if (check(TokenType.ID)) {
+        }
+        return node;
+    }
+
+    private TreeNode parseExpressionStatement() {
+        TreeNode node = new TreeNode("expression_statement");
+        if (check(TokenType.ID)) {
             node.addChild(new TreeNode(match(TokenType.ID)));
             node.addChild(parseIdLedTail());
-        } else if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
-            node.addChild(new TreeNode(advance()));
-            node.addChild(new TreeNode(match(TokenType.ID)));
-            node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
-        } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
-            node.addChild(new TreeNode(advance()));
-            node.addChild(new TreeNode(match(TokenType.ID)));
-            node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         } else if (check(TokenType.LPAREN)) {
             node.addChild(new TreeNode(match(TokenType.LPAREN)));
             node.addChild(parseExpression());
@@ -532,7 +532,6 @@ public class Parser {
                     "Unexpected token " + currentToken.type + " (\"" + currentToken.value + "\") in statement",
                     "Expected a statement: variable declaration, assignment, function call, or control flow."
             );
-            // Sync to FOLLOW(statement) to find next valid statement position
             synchronizeTo(FOLLOW_STATEMENT);
         }
         return node;
@@ -578,12 +577,6 @@ public class Parser {
             node.addChild(parseExpression());
             node.addChild(new TreeNode(match(TokenType.RBRACKET)));
             node.addChild(parseIdLedTailPrime());
-        } else if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
-            node.addChild(new TreeNode(advance()));
-            node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
-        } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
-            node.addChild(new TreeNode(advance()));
-            node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         } else if (check(TokenType.DOT)) {
             node.addChild(new TreeNode(match(TokenType.DOT)));
             node.addChild(new TreeNode(match(TokenType.ID)));
@@ -615,26 +608,30 @@ public class Parser {
         node.addChild(parseExpression());
         node.addChild(new TreeNode(match(TokenType.RPAREN)));
         node.addChild(parseBlock());
-        if (check(TokenType.NVM) || check(TokenType.PERHAPS)) {
-            node.addChild(parseElseClause());
-        }
+        node.addChild(parseElseIfChain());
         return node;
     }
 
-    private TreeNode parseElseClause() {
-        TreeNode node = new TreeNode("else_clause");
-        if (check(TokenType.NVM)) {
-            node.addChild(new TreeNode(match(TokenType.NVM)));
-            node.addChild(parseBlock());
-        } else {
+    private TreeNode parseElseIfChain() {
+        TreeNode node = new TreeNode("else_if_chain");
+        if (check(TokenType.PERHAPS)) {
             node.addChild(new TreeNode(match(TokenType.PERHAPS)));
             node.addChild(new TreeNode(match(TokenType.LPAREN)));
             node.addChild(parseExpression());
             node.addChild(new TreeNode(match(TokenType.RPAREN)));
             node.addChild(parseBlock());
-            if (check(TokenType.NVM) || check(TokenType.PERHAPS)) {
-                node.addChild(parseElseClause());
-            }
+            node.addChild(parseElseIfChain());
+        } else {
+            node.addChild(parseElseFinal());
+        }
+        return node;
+    }
+
+    private TreeNode parseElseFinal() {
+        TreeNode node = new TreeNode("else_final");
+        if (check(TokenType.NVM)) {
+            node.addChild(new TreeNode(match(TokenType.NVM)));
+            node.addChild(parseBlock());
         }
         return node;
     }
@@ -646,35 +643,62 @@ public class Parser {
         node.addChild(parseExpression());
         node.addChild(new TreeNode(match(TokenType.RPAREN)));
         node.addChild(new TreeNode(match(TokenType.LBRACE)));
-        while (check(TokenType.CHECKMEOUT) || check(TokenType.IDC)) {
-            node.addChild(parseCaseClause());
-        }
+        node.addChild(parseSwitchBody());
         node.addChild(new TreeNode(match(TokenType.RBRACE)));
+        return node;
+    }
+
+    private TreeNode parseSwitchBody() {
+        TreeNode node = new TreeNode("switch_body");
+        while (check(TokenType.CHECKMEOUT) || check(TokenType.IDC)) {
+            node.addChild(parseSwitchItem());
+        }
+        return node;
+    }
+
+    private TreeNode parseSwitchItem() {
+        TreeNode node = new TreeNode("switch_item");
+        if (check(TokenType.CHECKMEOUT)) {
+            node.addChild(parseCaseClause());
+        } else {
+            node.addChild(parseDefaultClause());
+        }
         return node;
     }
 
     private TreeNode parseCaseClause() {
         TreeNode node = new TreeNode("case_clause");
-        if (check(TokenType.CHECKMEOUT)) {
-            node.addChild(new TreeNode(match(TokenType.CHECKMEOUT)));
-            node.addChild(parseLiteral());
-        } else {
-            node.addChild(new TreeNode(match(TokenType.IDC)));
-        }
+        node.addChild(new TreeNode(match(TokenType.CHECKMEOUT)));
+        node.addChild(parseLiteral());
         node.addChild(new TreeNode(match(TokenType.COLON)));
+        node.addChild(parseCaseBody());
+        return node;
+    }
+
+    private TreeNode parseDefaultClause() {
+        TreeNode node = new TreeNode("default_clause");
+        node.addChild(new TreeNode(match(TokenType.IDC)));
+        node.addChild(new TreeNode(match(TokenType.COLON)));
+        node.addChild(parseCaseBody());
+        return node;
+    }
+
+    private TreeNode parseCaseBody() {
+        TreeNode node = new TreeNode("case_body");
         while (!check(TokenType.RAGEQUIT) && !check(TokenType.RBRACE) &&
                !check(TokenType.CHECKMEOUT) && !check(TokenType.IDC) && !check(TokenType.EOF)) {
             node.addChild(parseStatement());
             if (panicMode) {
-                // Sync to end of case (RAGEQUIT) or next case/default
                 synchronizeTo(EnumSet.of(
                         TokenType.RAGEQUIT, TokenType.RBRACE,
                         TokenType.CHECKMEOUT, TokenType.IDC, TokenType.EOF
                 ));
             }
         }
-        node.addChild(new TreeNode(match(TokenType.RAGEQUIT)));
-        node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
+        if (check(TokenType.RAGEQUIT)) {
+            node.addChild(new TreeNode(match(TokenType.RAGEQUIT)));
+            node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
+        }
         return node;
     }
 
@@ -687,9 +711,9 @@ public class Parser {
         node.addChild(new TreeNode(match(TokenType.FAR)));
         node.addChild(new TreeNode(match(TokenType.LPAREN)));
         node.addChild(parseForInit());
-        node.addChild(new TreeNode(match(TokenType.COMMA)));
+        node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         node.addChild(parseExpression());
-        node.addChild(new TreeNode(match(TokenType.COMMA)));
+        node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         node.addChild(parseForUpdate());
         node.addChild(new TreeNode(match(TokenType.RPAREN)));
         node.addChild(parseBlock());
@@ -748,14 +772,15 @@ public class Parser {
     private TreeNode parseReturnStatement() {
         TreeNode node = new TreeNode("return_statement");
         node.addChild(new TreeNode(match(TokenType.MICDROP)));
-        if (!check(TokenType.SEMICOLON)) node.addChild(parseExpression());
-        node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
+        node.addChild(parseReturnTail());
         return node;
     }
 
-    private TreeNode parseBreakStatement() {
-        TreeNode node = new TreeNode("break_statement");
-        node.addChild(new TreeNode(match(TokenType.RAGEQUIT)));
+    private TreeNode parseReturnTail() {
+        TreeNode node = new TreeNode("return_tail");
+        if (!check(TokenType.SEMICOLON)) {
+            node.addChild(parseExpression());
+        }
         node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         return node;
     }
@@ -771,16 +796,7 @@ public class Parser {
         TreeNode node = new TreeNode("print_statement");
         node.addChild(new TreeNode(match(TokenType.YAP)));
         node.addChild(new TreeNode(match(TokenType.LPAREN)));
-        if (check(TokenType.STRING_LITERAL)) {
-            Token strToken = advance();
-            node.addChild(new TreeNode(strToken));
-            if (check(TokenType.COMMA)) {
-                node.addChild(new TreeNode(match(TokenType.COMMA)));
-                node.addChild(parseArgumentList());
-            }
-        } else {
-            node.addChild(parseExpression());
-        }
+        node.addChild(parseArgumentListOpt());
         node.addChild(new TreeNode(match(TokenType.RPAREN)));
         node.addChild(new TreeNode(match(TokenType.SEMICOLON)));
         return node;
@@ -897,14 +913,11 @@ public class Parser {
         if (check(TokenType.NOT)) {
             node.addChild(new TreeNode(match(TokenType.NOT)));
             node.addChild(parseUnary());
-        } else if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
-            node.addChild(new TreeNode(advance()));
-            node.addChild(new TreeNode(match(TokenType.ID)));
-        } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
-            node.addChild(new TreeNode(advance()));
-            node.addChild(new TreeNode(match(TokenType.ID)));
         } else if (check(TokenType.MINUS)) {
             node.addChild(new TreeNode(match(TokenType.MINUS)));
+            node.addChild(parseUnary());
+        } else if (check(TokenType.PLUS)) {
+            node.addChild(new TreeNode(match(TokenType.PLUS)));
             node.addChild(parseUnary());
         } else if (check(TokenType.AMPERSAND)) {
             node.addChild(new TreeNode(match(TokenType.AMPERSAND)));
@@ -923,13 +936,7 @@ public class Parser {
     }
 
     private void parsePostfixPrime(TreeNode node) {
-        if (check(TokenType.PLUS) && tokens.get(pos).value.equals("++")) {
-            node.addChild(new TreeNode(advance()));
-            parsePostfixPrime(node);
-        } else if (check(TokenType.MINUS) && tokens.get(pos).value.equals("--")) {
-            node.addChild(new TreeNode(advance()));
-            parsePostfixPrime(node);
-        } else if (check(TokenType.LBRACKET)) {
+        if (check(TokenType.LBRACKET)) {
             node.addChild(new TreeNode(match(TokenType.LBRACKET)));
             node.addChild(parseExpression());
             node.addChild(new TreeNode(match(TokenType.RBRACKET)));
@@ -1018,7 +1025,7 @@ public class Parser {
                 // Sync to next type specifier (start of var decl) or RBRACE
                 synchronizeTo(EnumSet.of(
                         TokenType.NUMBER, TokenType.REAL, TokenType.MUCHOTEXTO,
-                        TokenType.MAYBE, TokenType.LETTER, TokenType.SIXSEVEN,
+                        TokenType.MAYBE, TokenType.LETTER,
                         TokenType.CONST, TokenType.CATALOG, TokenType.RBRACE, TokenType.EOF
                 ));
             }
